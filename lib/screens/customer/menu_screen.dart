@@ -1,0 +1,180 @@
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+import '../../models/model_menu.dart';
+import '../../providers/cart_provider.dart';
+import 'checkout_screen.dart';
+import 'customer_tracking_screen.dart';
+
+class MenuScreen extends StatefulWidget {
+  final String tableNumber; 
+
+  const MenuScreen({super.key, required this.tableNumber});
+
+  @override
+  State<MenuScreen> createState() => _MenuScreenState();
+}
+
+class _MenuScreenState extends State<MenuScreen> {
+  final List<String> _categories = ["กาแฟ", "ชา", "นมสด", "ผลไม้"];
+  int _selectedIndex = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF9F9F9),
+      appBar: AppBar(
+        title: Column(
+          children: [
+            const Text("สั่งอาหาร", style: TextStyle(fontSize: 16)),
+            Text("โต๊ะ: ${widget.tableNumber}", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: const Color(0xFFA6C48A))),
+          ],
+        ),
+        centerTitle: true,
+        backgroundColor: const Color(0xFF6F4E37),
+        actions: [
+          Consumer<CartProvider>(
+            builder: (_, cart, __) {
+              if (cart.activeOrderId != null) {
+                return IconButton(
+                  icon: const Icon(Icons.receipt_long, color: Colors.white),
+                  onPressed: () {
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => CustomerTrackingScreen(orderId: cart.activeOrderId!)));
+                  },
+                );
+              }
+              return const SizedBox();
+            },
+          ),
+          Consumer<CartProvider>(
+            builder: (_, cart, ch) => Stack(
+              alignment: Alignment.center,
+              children: [
+                IconButton(icon: const Icon(Icons.shopping_bag_outlined), onPressed: () => _goToCheckout(context)),
+                if (cart.totalItemsCount > 0)
+                   Positioned(right: 8, top: 8, child: Container(padding: const EdgeInsets.all(2), decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(6)), constraints: const BoxConstraints(minWidth: 14, minHeight: 14), child: Text('${cart.totalItemsCount}', style: const TextStyle(color: Colors.white, fontSize: 8), textAlign: TextAlign.center)))
+              ],
+            ),
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          Container(
+            height: 60,
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: ListView.separated(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              scrollDirection: Axis.horizontal,
+              itemCount: _categories.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 10),
+              itemBuilder: (context, index) {
+                bool isSelected = _selectedIndex == index;
+                return GestureDetector(
+                  onTap: () => setState(() => _selectedIndex = index),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                    decoration: BoxDecoration(color: isSelected ? const Color(0xFFA6C48A) : Colors.grey[200], borderRadius: BorderRadius.circular(20)),
+                    child: Center(child: Text(_categories[index], style: TextStyle(color: isSelected ? Colors.white : Colors.black87, fontWeight: FontWeight.bold))),
+                  ),
+                );
+              },
+            ),
+          ),
+
+          Expanded(
+            child: StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance.collection('menu_items').snapshots(),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+
+                String currentCategory = _categories[_selectedIndex];
+                final filteredDocs = snapshot.data!.docs.where((doc) {
+                  Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+                  String itemCategory = data['category'] ?? 'กาแฟ'; 
+                  return itemCategory == currentCategory;
+                }).toList();
+
+                if (filteredDocs.isEmpty) {
+                  return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [const Icon(Icons.menu_book, size: 60, color: Colors.grey), const SizedBox(height: 10), Text("ไม่พบเมนูในหมวด $currentCategory", style: const TextStyle(color: Colors.grey))]));
+                }
+
+                final menus = filteredDocs.map((doc) {
+                  Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+                  // แปลง Recipe (ถ้ามี)
+                  List<RecipeItem> recipeList = [];
+                  if (data['recipe'] != null && data['recipe'] is List) {
+                    for (var item in data['recipe']) {
+                      if (item is Map) recipeList.add(RecipeItem.fromMap(Map<String, dynamic>.from(item)));
+                    }
+                  }
+
+                  return MenuItem(
+                    id: doc.id,
+                    name: data['name'] ?? 'Unknown',
+                    price: (data['price'] ?? 0).toDouble(),
+                    category: data['category'] ?? 'อื่นๆ',
+                    imageUrl: data['imageUrl'] ?? '', // --- 🔥 ดึง URL รูป ---
+                    recipe: recipeList, 
+                  );
+                }).toList();
+
+                return GridView.builder(
+                  padding: const EdgeInsets.all(16),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, childAspectRatio: 0.75, crossAxisSpacing: 16, mainAxisSpacing: 16),
+                  itemCount: menus.length,
+                  itemBuilder: (ctx, i) => _buildMenuCard(context, menus[i]),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+      floatingActionButton: Consumer<CartProvider>(
+        builder: (context, cart, child) {
+          if (cart.itemCount == 0) return const SizedBox();
+          return FloatingActionButton.extended(onPressed: () => _goToCheckout(context), label: Text("ตะกร้า ฿${cart.totalAmount.toStringAsFixed(0)}"), icon: const Icon(Icons.shopping_cart), backgroundColor: const Color(0xFFA6C48A));
+        },
+      ),
+    );
+  }
+
+  void _goToCheckout(BuildContext context) {
+    Navigator.push(context, MaterialPageRoute(builder: (context) => CheckoutScreen(tableNumber: widget.tableNumber)));
+  }
+
+  Widget _buildMenuCard(BuildContext context, MenuItem menu) {
+    return Container(
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)]),
+      child: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(
+            child: Container(
+              width: double.infinity,
+              decoration: BoxDecoration(color: Colors.brown[50], borderRadius: BorderRadius.circular(12)),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                // --- 🔥 แสดงรูปภาพ ---
+                child: menu.imageUrl.isNotEmpty
+                    ? Image.network(
+                        menu.imageUrl,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image, color: Colors.grey),
+                      )
+                    : const Icon(Icons.coffee, size: 50, color: Colors.brown),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(menu.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16), maxLines: 1),
+          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+            Text("฿${menu.price.toStringAsFixed(0)}", style: const TextStyle(color: Colors.grey)),
+            InkWell(onTap: () { Provider.of<CartProvider>(context, listen: false).addItem(menu); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("เพิ่ม ${menu.name} แล้ว"), duration: const Duration(milliseconds: 500))); }, child: Container(padding: const EdgeInsets.all(6), decoration: const BoxDecoration(color: Color(0xFFA6C48A), shape: BoxShape.circle), child: const Icon(Icons.add, color: Colors.white, size: 20)))
+          ])
+        ]),
+      ),
+    );
+  }
+}
