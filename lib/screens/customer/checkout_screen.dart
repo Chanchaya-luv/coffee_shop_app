@@ -11,7 +11,7 @@ class CheckoutScreen extends StatefulWidget {
 
   const CheckoutScreen({
     super.key, 
-    required this.tableNumber
+    required this.tableNumber, required bool isCustomer
   });
 
   @override

@@ -103,6 +103,8 @@ class _QuickMenuScreenState extends State<QuickMenuScreen> {
 
                 final menus = filteredDocs.map((doc) {
                   Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+                  
+                  // ดึง Recipe
                   List<RecipeItem> recipeList = [];
                   if (data['recipe'] != null && data['recipe'] is List) {
                     for (var item in data['recipe']) {
@@ -117,6 +119,8 @@ class _QuickMenuScreenState extends State<QuickMenuScreen> {
                     category: data['category'] ?? 'อื่นๆ',
                     imageUrl: data['imageUrl'] ?? '',
                     recipe: recipeList,
+                    // --- 🔥 ดึงสถานะ isAvailable มาด้วย (ถ้าไม่มีให้เป็น true) ---
+                    isAvailable: data['isAvailable'] ?? true, 
                   );
                 }).toList();
 
@@ -124,7 +128,7 @@ class _QuickMenuScreenState extends State<QuickMenuScreen> {
                   padding: const EdgeInsets.all(16),
                   gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: 2,
-                    childAspectRatio: 0.75, // สัดส่วนนี้จะช่วยให้การ์ดสูงพอที่รูปจะขยายได้
+                    childAspectRatio: 0.75, 
                     crossAxisSpacing: 16,
                     mainAxisSpacing: 16,
                   ),
@@ -141,64 +145,91 @@ class _QuickMenuScreenState extends State<QuickMenuScreen> {
     );
   }
 
+  // --- 🔥 ฟังก์ชันการ์ดสินค้าที่ปรับปรุงแล้ว ---
   Widget _buildProductCard(BuildContext context, MenuItem menu) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        // ใช้เงาที่นุ่มนวลขึ้นเหมือนฝั่งลูกค้า
         boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
       ),
       child: Padding(
-        // เพิ่ม Padding เป็น 12 เพื่อให้มีช่องไฟมากขึ้น
         padding: const EdgeInsets.all(12.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // รูปภาพขยายเต็มพื้นที่ที่เหลือ
+            // รูปภาพขยายเต็มพื้นที่
             Expanded(
-              child: Container(
-                width: double.infinity,
-                decoration: BoxDecoration(color: Colors.brown[50], borderRadius: BorderRadius.circular(12)),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: menu.imageUrl.isNotEmpty
-                      ? Image.network(
-                          menu.imageUrl,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image, color: Colors.grey),
-                        )
-                      // เพิ่มขนาดไอคอน Placeholder ให้ใหญ่ขึ้น
-                      : const Icon(Icons.coffee, size: 50, color: Colors.brown),
-                ),
+              child: Stack(
+                children: [
+                  Container(
+                    width: double.infinity,
+                    decoration: BoxDecoration(color: Colors.brown[50], borderRadius: BorderRadius.circular(12)),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: menu.imageUrl.isNotEmpty
+                          // --- 🔥 ถ้าของหมด ให้รูปเป็นขาวดำ/จางลง ---
+                          ? ColorFiltered(
+                              colorFilter: menu.isAvailable 
+                                ? const ColorFilter.mode(Colors.transparent, BlendMode.multiply) 
+                                : const ColorFilter.mode(Colors.grey, BlendMode.saturation),
+                              child: Image.network(
+                                  menu.imageUrl,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image, color: Colors.grey),
+                                )
+                            )
+                          : const Icon(Icons.coffee, size: 50, color: Colors.brown),
+                    ),
+                  ),
+
+                  // --- 🔥 ป้าย SOLD OUT ทับรูป ---
+                  if (!menu.isAvailable)
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.6),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Center(
+                        child: Text("SOLD OUT", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                      ),
+                    ),
+                ],
               ),
             ),
-            // เพิ่มระยะห่างเป็น 10
             const SizedBox(height: 10),
-            // เพิ่มขนาดตัวอักษรชื่อเมนูเป็น 16
-            Text(menu.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16), maxLines: 1),
             
-            // แถวแสดงราคาและปุ่มเพิ่ม/ลด
+            // ชื่อเมนู (ถ้าหมดให้สีจางลง)
+            Text(
+              menu.name,
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: menu.isAvailable ? Colors.black : Colors.grey),
+              maxLines: 1,
+            ),
+            
+            // แถวราคาและปุ่ม
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text("฿${menu.price.toStringAsFixed(0)}", style: const TextStyle(color: Colors.grey)),
                 
-                // ปุ่มควบคุมจำนวน
-                Consumer<CartProvider>(
-                  builder: (ctx, cart, child) {
-                    int qty = cart.getQuantity(menu.id);
-                    return Row(
-                      children: [
-                        InkWell(onTap: () => cart.updateQuantity(menu, -1), child: const Icon(Icons.remove_circle_outline, color: Colors.grey)),
-                        const SizedBox(width: 8), // เพิ่มระยะห่างตัวเลข
-                        Text("$qty", style: const TextStyle(fontWeight: FontWeight.bold)),
-                        const SizedBox(width: 8), // เพิ่มระยะห่างตัวเลข
-                        InkWell(onTap: () => cart.updateQuantity(menu, 1), child: const Icon(Icons.add_circle, color: Color(0xFFA6C48A))),
-                      ],
-                    );
-                  },
-                )
+                // --- 🔥 ถ้ามีของ -> โชว์ปุ่มบวก/ลบ, ถ้าหมด -> โชว์คำว่า "ของหมด" ---
+                if (menu.isAvailable)
+                  Consumer<CartProvider>(
+                    builder: (ctx, cart, child) {
+                      int qty = cart.getQuantity(menu.id);
+                      return Row(
+                        children: [
+                          InkWell(onTap: () => cart.updateQuantity(menu, -1), child: const Icon(Icons.remove_circle_outline, color: Colors.grey)),
+                          const SizedBox(width: 8), 
+                          Text("$qty", style: const TextStyle(fontWeight: FontWeight.bold)),
+                          const SizedBox(width: 8), 
+                          InkWell(onTap: () => cart.updateQuantity(menu, 1), child: const Icon(Icons.add_circle, color: Color(0xFFA6C48A))),
+                        ],
+                      );
+                    },
+                  )
+                else
+                   const Text("", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 12)),
               ],
             ),
           ],
@@ -227,7 +258,11 @@ class _QuickMenuScreenState extends State<QuickMenuScreen> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
               onPressed: () {
-                Navigator.push(context, MaterialPageRoute(builder: (context) => CheckoutScreen(tableNumber: 'TA-001')));
+                Navigator.push(context, MaterialPageRoute(builder: (context) => CheckoutScreen(
+  tableNumber: 'TA-001',
+  isCustomer: true,   // หรือ false ตามที่ต้องการ
+)
+));
               },
               child: Text("Checkout ฿${cart.totalAmount.toStringAsFixed(0)}", style: const TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold)),
             ),

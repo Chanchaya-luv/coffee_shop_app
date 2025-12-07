@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
-// --- Import หน้าจอต่างๆ ---
 import '../admin/gp_calculator_screen.dart';
 import '../stock/stock_screen.dart'; 
 import '../customer/quick_menu_screen.dart'; 
@@ -9,11 +10,49 @@ import '../order/order_history_screen.dart';
 import '../admin/manage_menu_screen.dart';
 import 'payment_settings_screen.dart';
 import 'notification_screen.dart';
-// 🔥 เพิ่ม Import หน้าสาขา
 import '../admin/branch_management_screen.dart'; 
 
-class SettingScreen extends StatelessWidget {
+import 'manage_accounts_screen.dart';
+import 'edit_profile_screen.dart';
+import 'store_profile_screen.dart';
+import 'generic_settings_screen.dart';
+
+class SettingScreen extends StatefulWidget {
   const SettingScreen({super.key});
+
+  @override
+  State<SettingScreen> createState() => _SettingScreenState();
+}
+
+class _SettingScreenState extends State<SettingScreen> {
+  String _currentUserRole = 'staff'; 
+  
+  @override
+  void initState() {
+    super.initState();
+    _fetchUserRole();
+  }
+
+  Future<void> _fetchUserRole() async {
+    User? user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      try {
+        var doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+        if (doc.exists && mounted) {
+          setState(() {
+            _currentUserRole = doc.data()?['role'] ?? 'staff';
+          });
+        }
+      } catch (e) {
+        print("Error fetching role: $e");
+      }
+    }
+  }
+
+  // เช็คว่ามีสิทธิ์แก้ไขหรือไม่ (Manager/Owner แก้ได้, Staff แก้ไม่ได้)
+  bool get _canEdit {
+    return _currentUserRole == 'manager' || _currentUserRole == 'owner';
+  }
 
   void _confirmSignOut(BuildContext context) {
     showDialog(
@@ -42,6 +81,7 @@ class SettingScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     double paddingTop = MediaQuery.of(context).padding.top;
+    final User? currentUser = FirebaseAuth.instance.currentUser;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF9F9F9),
@@ -49,24 +89,17 @@ class SettingScreen extends StatelessWidget {
         physics: const AlwaysScrollableScrollPhysics(),
         child: Column(
           children: [
-            // --- Header ---
             Container(
               padding: EdgeInsets.only(top: paddingTop + 20, left: 20, right: 20, bottom: 20),
               decoration: const BoxDecoration(color: Color(0xFF6F4E37)),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(children: [
-                    const CircleAvatar(
-                      radius: 24,
-                      backgroundImage: NetworkImage('https://img5.pic.in.th/file/secure-sv1/05871915-7cac-440c-9a52-17e6d9d71b4c.md.png'),
-                      backgroundColor: Colors.transparent,
-                    ),
-                    const SizedBox(width: 10),
-                    const Text("Caffy", style: TextStyle(fontFamily: 'Serif', fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white)),
+                  const Row(children: [
+                    CircleAvatar(radius: 24, backgroundImage: NetworkImage('https://img5.pic.in.th/file/secure-sv1/05871915-7cac-440c-9a52-17e6d9d71b4c.md.png'), backgroundColor: Colors.transparent),
+                    SizedBox(width: 10),
+                    Text("Caffy", style: TextStyle(fontFamily: 'Serif', fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white)),
                   ]),
-                  
-                  const CircleAvatar(radius: 20, backgroundImage: NetworkImage('https://i.pravatar.cc/150?img=32'), backgroundColor: Colors.grey),
                 ],
               ),
             ),
@@ -75,21 +108,61 @@ class SettingScreen extends StatelessWidget {
               padding: const EdgeInsets.all(20.0),
               child: Column(
                 children: [
+                  StreamBuilder<DocumentSnapshot>(
+                    stream: FirebaseFirestore.instance.collection('users').doc(currentUser?.uid).snapshots(),
+                    builder: (context, snapshot) {
+                      String name = "ผู้ใช้งาน";
+                      String role = "staff";
+                      String photoUrl = "";
+                      if (snapshot.hasData && snapshot.data!.exists) {
+                        var data = snapshot.data!.data() as Map<String, dynamic>;
+                        name = data['name'] ?? name;
+                        role = data['role'] ?? role;
+                        photoUrl = data['photoUrl'] ?? "";
+                      }
+                      String roleDisplay = "พนักงานทั่วไป";
+                      if (role == 'manager') roleDisplay = "ผู้จัดการ";
+                      if (role == 'owner') roleDisplay = "เจ้าของร้าน";
+                      if (role == 'admin') roleDisplay = "ผู้ดูแลระบบ";
+
+                      return Card(
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        elevation: 2,
+                        margin: const EdgeInsets.only(bottom: 20),
+                        child: ListTile(
+                          contentPadding: const EdgeInsets.all(16),
+                          leading: CircleAvatar(radius: 30, backgroundImage: photoUrl.isNotEmpty ? NetworkImage(photoUrl) : null, child: photoUrl.isEmpty ? const Icon(Icons.person, size: 30) : null),
+                          title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                          subtitle: Text("ตำแหน่ง: $roleDisplay", style: const TextStyle(color: Colors.grey)),
+                          trailing: const Icon(Icons.edit, color: Color(0xFF6F4E37)),
+                          onTap: () => _navigate(context, const EditProfileScreen()),
+                        ),
+                      );
+                    }
+                  ),
+
                   // --- 1. การตั้งค่าทั่วไป ---
                   _buildSettingsGroup(
                     title: "การตั้งค่าทั่วไป",
                     children: [
-                      _buildSettingItem(Icons.store, "ข้อมูลร้านค้า", onTap: () => _navigate(context, const StoreProfileScreen())),
-                      
-                      // --- 🔥 เพิ่มเมนูจัดการสาขา ---
+                      // --- 🔥 ส่งค่า isReadOnly: !_canEdit ไปบอกหน้าลูก ---
                       _buildSettingItem(
-                        Icons.store_mall_directory, 
-                        "จัดการสาขา", 
-                        onTap: () => _navigate(context, const BranchManagementScreen())
+                        Icons.store, "ข้อมูลร้านค้า", 
+                        onTap: () => _navigate(context, StoreProfileScreen(isReadOnly: !_canEdit))
                       ),
-
+                      
+                      _buildSettingItem(
+                        Icons.store_mall_directory, "จัดการสาขา", 
+                        onTap: () => _navigate(context, BranchManagementScreen(isReadOnly: !_canEdit))
+                      ),
+                      
                       _buildSettingItem(Icons.history, "ประวัติออเดอร์", onTap: () => _navigate(context, const OrderHistoryScreen())),
-                      _buildSettingItem(Icons.payment, "การตั้งค่าการชำระเงิน", onTap: () => _navigate(context, const PaymentSettingsScreen())),
+                      
+                      _buildSettingItem(
+                        Icons.payment, "การตั้งค่าการชำระเงิน", 
+                        onTap: () => _navigate(context, PaymentSettingsScreen(isReadOnly: !_canEdit))
+                      ),
+                      
                       _buildSettingItem(Icons.notifications_active_outlined, "การแจ้งเตือน", showDivider: false, onTap: () => _navigate(context, const NotificationScreen())),
                     ],
                   ),
@@ -108,14 +181,22 @@ class SettingScreen extends StatelessWidget {
 
                   // --- 3. ความปลอดภัย ---
                   _buildSettingsGroup(
-                    title: "ความปลอดภัย",
+                    title: "บัญชีและความปลอดภัย",
                     children: [
-                      _buildSettingItem(Icons.vpn_key_outlined, "บัญชีและความปลอดภัย", showDivider: false, onTap: () => _navigate(context, const GenericSettingsScreen(title: "ความปลอดภัย"))),
+                      // อันนี้ยังคงล็อกไว้เหมือนเดิม เพราะ Staff ไม่ควรเห็นรายชื่อคนอื่น
+                      _buildSettingItem(
+                        Icons.manage_accounts, "จัดการบัญชีและพนักงาน", 
+                        isRestricted: !_canEdit, // ยังคงล็อกห้ามเข้าสำหรับ Staff
+                        onTap: () {
+                          if (_canEdit) _navigate(context, const ManageAccountsScreen());
+                          else ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("⛔️ ไม่มีสิทธิ์เข้าถึง"), backgroundColor: Colors.red));
+                        }
+                      ),
+                      _buildSettingItem(Icons.vpn_key_outlined, "เปลี่ยนรหัสผ่าน / แก้ไขข้อมูล", showDivider: false, onTap: () => _navigate(context, const EditProfileScreen())),
                     ],
                   ),
                   const SizedBox(height: 40),
 
-                  // ปุ่ม Logout
                   SizedBox(
                     width: double.infinity,
                     height: 50,
@@ -149,65 +230,19 @@ class SettingScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildSettingItem(IconData icon, String title, {bool showDivider = true, required VoidCallback onTap}) {
+  Widget _buildSettingItem(IconData icon, String title, {bool showDivider = true, required VoidCallback onTap, bool isRestricted = false}) {
     return Column(
       children: [
         ListTile(
-          leading: Icon(icon, color: const Color(0xFF5D4037)),
-          title: Text(title, style: const TextStyle(fontSize: 16, color: Colors.black87)),
-          trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+          leading: Icon(icon, color: isRestricted ? Colors.grey : const Color(0xFF5D4037)),
+          title: Text(title, style: TextStyle(fontSize: 16, color: isRestricted ? Colors.grey : Colors.black87)),
+          trailing: isRestricted 
+              ? const Icon(Icons.lock, color: Colors.grey, size: 20) 
+              : const Icon(Icons.chevron_right, color: Colors.grey),
           onTap: onTap,
         ),
         if (showDivider) const Divider(height: 1, indent: 50, endIndent: 20, color: Color(0xFFEEEEEE)),
       ],
-    );
-  }
-}
-
-// Mockup Screens (เหมือนเดิม)
-class StoreProfileScreen extends StatelessWidget {
-  const StoreProfileScreen({super.key});
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text("ข้อมูลร้านค้า"), backgroundColor: const Color(0xFF6F4E37), foregroundColor: Colors.white),
-      body: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: Column(
-          children: [
-            const CircleAvatar(radius: 50, backgroundImage: NetworkImage('https://img5.pic.in.th/file/secure-sv1/05871915-7cac-440c-9a52-17e6d9d71b4c.md.png'), backgroundColor: Colors.transparent),
-            const SizedBox(height: 20),
-            TextFormField(initialValue: "Caffy Coffee", decoration: const InputDecoration(labelText: "ชื่อร้าน", border: OutlineInputBorder())),
-            const SizedBox(height: 15),
-            TextFormField(initialValue: "081-234-5678", decoration: const InputDecoration(labelText: "เบอร์โทรศัพท์", border: OutlineInputBorder())),
-            const SizedBox(height: 15),
-            TextFormField(initialValue: "กรุงเทพมหานคร", decoration: const InputDecoration(labelText: "ที่อยู่", border: OutlineInputBorder())),
-            const SizedBox(height: 30),
-            ElevatedButton(onPressed: () => Navigator.pop(context), child: const Text("บันทึกการเปลี่ยนแปลง"))
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class GenericSettingsScreen extends StatelessWidget {
-  final String title;
-  const GenericSettingsScreen({super.key, required this.title});
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(title), backgroundColor: const Color(0xFF6F4E37), foregroundColor: Colors.white),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.settings_applications, size: 80, color: Colors.grey),
-            const SizedBox(height: 20),
-            Text("$title \n(ฟีเจอร์นี้อยู่ระหว่างการพัฒนา)", textAlign: TextAlign.center, style: const TextStyle(fontSize: 18, color: Colors.grey)),
-          ],
-        ),
-      ),
     );
   }
 }

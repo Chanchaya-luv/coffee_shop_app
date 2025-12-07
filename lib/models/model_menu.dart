@@ -30,15 +30,17 @@ class MenuItem {
   final String name;
   final double price;
   final String category;
-  final String imageUrl; // --- 🔥 เพิ่ม field นี้ ---
+  final String imageUrl;
   final List<RecipeItem> recipe;
+  final bool isAvailable; // --- 🔥 เพิ่มตัวแปรเช็คของหมด ---
 
   MenuItem({
     required this.id, 
     required this.name, 
     required this.price, 
     this.category = 'อื่นๆ',
-    this.imageUrl = '', // กำหนดค่าเริ่มต้นเป็นว่าง
+    this.imageUrl = '',
     required this.recipe,
+    this.isAvailable = true, // ค่า Default คือมีของ (True)
   });
 }

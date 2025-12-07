@@ -9,14 +9,17 @@ class RegisterScreen extends StatefulWidget {
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
+  final _nameCtrl = TextEditingController(); // ชื่อ
   final _emailCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
   final _confirmPassCtrl = TextEditingController();
+  final _imageCtrl = TextEditingController(); // ลิงก์รูป
+  
   bool _isLoading = false;
 
   void _register() async {
-    if (_emailCtrl.text.isEmpty || _passCtrl.text.isEmpty || _confirmPassCtrl.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("กรุณากรอกข้อมูลให้ครบถ้วน"), backgroundColor: Colors.red));
+    if (_nameCtrl.text.isEmpty || _emailCtrl.text.isEmpty || _passCtrl.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("กรุณากรอกข้อมูลจำเป็นให้ครบ"), backgroundColor: Colors.red));
       return;
     }
     if (_passCtrl.text != _confirmPassCtrl.text) {
@@ -26,8 +29,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
     setState(() => _isLoading = true);
     try {
-      // --- 🔥 แก้ไขตรงนี้: เปลี่ยนจาก signUp เป็น register ให้ตรงกับ AuthService ---
-      await AuthService().register(_emailCtrl.text.trim(), _passCtrl.text.trim());
+      // เรียกใช้ฟังก์ชัน register แบบใหม่ที่ส่งชื่อและรูปไปด้วย
+      await AuthService().register(
+        _emailCtrl.text.trim(), 
+        _passCtrl.text.trim(),
+        _nameCtrl.text.trim(),
+        _imageCtrl.text.trim()
+      );
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("สมัครสมาชิกสำเร็จ!"), backgroundColor: Colors.green));
@@ -47,7 +55,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF9F9F9),
       appBar: AppBar(
-        title: const Text("สมัครสมาชิก (Admin)", style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text("สมัครสมาชิกพนักงาน", style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: Colors.transparent,
         foregroundColor: const Color(0xFF5D4037),
         elevation: 0,
@@ -58,23 +66,20 @@ class _RegisterScreenState extends State<RegisterScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Logo
-              const CircleAvatar(
-                radius: 50,
-                backgroundColor: Colors.transparent,
-                backgroundImage: NetworkImage('https://img5.pic.in.th/file/secure-sv1/05871915-7cac-440c-9a52-17e6d9d71b4c.md.png'),
-              ),
-              
-              const SizedBox(height: 20),
-              const Text("Caffy", style: TextStyle(fontFamily: 'Serif', fontSize: 32, fontWeight: FontWeight.bold, color: Color(0xFF5D4037))),
-              const Text("สร้างบัญชีผู้ใช้ใหม่", style: TextStyle(fontSize: 16, color: Colors.grey)),
-              const SizedBox(height: 40),
+              const Text("Create Account", style: TextStyle(fontFamily: 'Serif', fontSize: 32, fontWeight: FontWeight.bold, color: Color(0xFF5D4037))),
+              const SizedBox(height: 30),
 
+              // --- ช่องกรอกข้อมูล ---
+              _buildTextField("ชื่อพนักงาน / ชื่อร้าน", _nameCtrl, icon: Icons.person),
+              const SizedBox(height: 15),
               _buildTextField("อีเมล", _emailCtrl, icon: Icons.email_outlined),
               const SizedBox(height: 15),
               _buildTextField("รหัสผ่าน", _passCtrl, isPassword: true, icon: Icons.lock_outline),
               const SizedBox(height: 15),
               _buildTextField("ยืนยันรหัสผ่าน", _confirmPassCtrl, isPassword: true, icon: Icons.lock_outline),
+              
+              const SizedBox(height: 15),
+              _buildTextField("ลิงก์รูปโปรไฟล์ (URL) *ไม่บังคับ", _imageCtrl, icon: Icons.image),
               
               const SizedBox(height: 30),
 
@@ -86,7 +91,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   onPressed: _isLoading ? null : _register,
                   child: _isLoading 
                     ? const CircularProgressIndicator(color: Colors.white)
-                    : const Text("สมัครสมาชิก (Admin)", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+                    : const Text("ลงทะเบียน", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
                 ),
               ),
 

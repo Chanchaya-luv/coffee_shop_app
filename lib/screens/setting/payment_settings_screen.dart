@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class PaymentSettingsScreen extends StatefulWidget {
-  const PaymentSettingsScreen({super.key});
+  final bool isReadOnly; // รับค่ามา
+
+  const PaymentSettingsScreen({super.key, this.isReadOnly = false});
 
   @override
   State<PaymentSettingsScreen> createState() => _PaymentSettingsScreenState();
@@ -21,7 +23,6 @@ class _PaymentSettingsScreenState extends State<PaymentSettingsScreen> {
   }
 
   Future<void> _loadSettings() async {
-    // ดึงข้อมูลเก่ามาโชว์ (ถ้ามี)
     var doc = await FirebaseFirestore.instance.collection('metadata').doc('shop_settings').get();
     if (doc.exists) {
       var data = doc.data() as Map<String, dynamic>;
@@ -76,20 +77,25 @@ class _PaymentSettingsScreenState extends State<PaymentSettingsScreen> {
             _buildTextField("ชื่อบัญชี", _accountNameCtrl, icon: Icons.person),
 
             const SizedBox(height: 40),
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: ElevatedButton.icon(
-                onPressed: _isLoading ? null : _saveSettings,
-                icon: const Icon(Icons.save),
-                label: _isLoading ? const CircularProgressIndicator(color: Colors.white) : const Text("บันทึกข้อมูล", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFA6C48A),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            
+            // --- 🔥 ซ่อนปุ่มบันทึก ถ้าเป็น Read Only ---
+            if (!widget.isReadOnly)
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton.icon(
+                  onPressed: _isLoading ? null : _saveSettings,
+                  icon: const Icon(Icons.save),
+                  label: _isLoading ? const CircularProgressIndicator(color: Colors.white) : const Text("บันทึกข้อมูล", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFA6C48A),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
                 ),
-              ),
-            )
+              )
+            else
+               const Center(child: Text("- ไม่สามารถแก้ไขข้อมูลได้ -", style: TextStyle(color: Colors.grey))),
           ],
         ),
       ),
@@ -99,13 +105,14 @@ class _PaymentSettingsScreenState extends State<PaymentSettingsScreen> {
   Widget _buildTextField(String label, TextEditingController ctrl, {IconData? icon, bool isNumber = false}) {
     return TextField(
       controller: ctrl,
+      readOnly: widget.isReadOnly, // --- 🔥 ล็อกไม่ให้พิมพ์ ---
       keyboardType: isNumber ? TextInputType.number : TextInputType.text,
       decoration: InputDecoration(
         labelText: label,
-        prefixIcon: icon != null ? Icon(icon, color: const Color(0xFF5D4037)) : null,
+        prefixIcon: icon != null ? Icon(icon, color: widget.isReadOnly ? Colors.grey : const Color(0xFF5D4037)) : null,
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
         filled: true,
-        fillColor: Colors.white,
+        fillColor: widget.isReadOnly ? Colors.grey[200] : Colors.white, // เปลี่ยนสีพื้น
       ),
     );
   }
