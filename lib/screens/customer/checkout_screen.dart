@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../providers/cart_provider.dart';
 import 'payment_screen.dart';
+// --- 1. Import หน้าผังโต๊ะ ---
 import '../../screens/admin/table_monitor_screen.dart'; 
 
 class CheckoutScreen extends StatefulWidget {
