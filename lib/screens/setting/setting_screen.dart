@@ -1,3 +1,4 @@
+import 'package:coffee_shop_app/screens/setting/help_center_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -163,7 +164,13 @@ class _SettingScreenState extends State<SettingScreen> {
                         onTap: () => _navigate(context, PaymentSettingsScreen(isReadOnly: !_canEdit))
                       ),
                       
-                      _buildSettingItem(Icons.notifications_active_outlined, "การแจ้งเตือน", showDivider: false, onTap: () => _navigate(context, const NotificationScreen())),
+                      _buildSettingItem(Icons.notifications_active_outlined, "การแจ้งเตือน", onTap: () => _navigate(context, const NotificationScreen())),
+                      
+                      _buildSettingItem(
+                        Icons.help_outline, 
+                        "ศูนย์ช่วยเหลือ", 
+                        showDivider: false, // ปิดเส้นขีดล่างเพราะเป็นอันสุดท้าย
+                        onTap: () => _navigate(context, const HelpCenterScreen()))
                     ],
                   ),
                   const SizedBox(height: 20),
@@ -175,6 +182,7 @@ class _SettingScreenState extends State<SettingScreen> {
                       _buildSettingItem(Icons.inventory_2_outlined, "การจัดการวัตถุดิบ", onTap: () => _navigate(context, const StockScreen())),
                       _buildSettingItem(Icons.restaurant_menu, "การจัดการเมนู", onTap: () => _navigate(context, const ManageMenuScreen())),
                       _buildSettingItem(Icons.bar_chart, "การคำนวณ GP", showDivider: false, onTap: () => _navigate(context, const GPCalculatorScreen())),
+                      
                     ],
                   ),
                   const SizedBox(height: 20),
