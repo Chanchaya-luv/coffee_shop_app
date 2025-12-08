@@ -162,7 +162,7 @@ class _ManageMenuScreenState extends State<ManageMenuScreen> {
                     if (!isAvailable)
                       Container(
                         decoration: BoxDecoration(color: Colors.black.withOpacity(0.6), borderRadius: BorderRadius.circular(12)),
-                        child: const Center(child: Text("ของหมด", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+                        child: const Center(child: Text("SOLD OUT", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
                       )
                   ],
                 ),
