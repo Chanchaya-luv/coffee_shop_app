@@ -10,17 +10,22 @@ import '../../providers/cart_provider.dart';
 import '../../services/order_service.dart';
 import '../../models/model_menu.dart';
 import 'order_success_screen.dart';
+import '../home/home_screen.dart';
 
 class PaymentScreen extends StatefulWidget {
   final double amount;
   final String paymentMethod;
   final String tableNumber;
+  final bool isCustomer;
+   final double discount;
 
   const PaymentScreen({
     super.key,
     required this.amount,
     required this.paymentMethod,
     required this.tableNumber,
+    this.discount = 0.0,
+    this.isCustomer = false,
   });
 
   @override
@@ -77,11 +82,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
       });
 
       String newOrderId = await OrderService().placeOrder(
-  orderItems,
-  widget.tableNumber,
-  widget.paymentMethod,
-  widget.amount.toString(),   // ← แปลงเป็น String
-);
+       orderItems,
+       widget.tableNumber,
+       widget.paymentMethod,
+       "สาขาหลัก",
+       widget.discount,
+     );
+
 
 
       cart.clearCart();
@@ -260,7 +267,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
               ),
             ),
             
-            const SizedBox(height: 40),
+            const SizedBox(height: 20),
 
             SizedBox(
               width: double.infinity,

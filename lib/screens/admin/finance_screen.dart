@@ -3,7 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
-// --- เพิ่ม Import สำหรับ PDF ---
+// Import สำหรับ PDF
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
@@ -51,6 +51,7 @@ class _FinanceScreenState extends State<FinanceScreen> {
   Future<void> _printFinanceReport({
     required DateTime date,
     required double totalSales,
+    required double totalDiscount, // 🔥 รับค่าส่วนลด
     required double cashSales,
     required double qrSales,
     required int totalOrders,
@@ -99,13 +100,10 @@ class _FinanceScreenState extends State<FinanceScreen> {
                 child: pw.Row(
                   mainAxisAlignment: pw.MainAxisAlignment.spaceAround,
                   children: [
-                    _buildPdfSummaryItem("ยอดขายรวม", totalSales, font, fontBold, PdfColors.black),
-                    _buildPdfSummaryItem("เงินสด (Cash)", cashSales, font, fontBold, PdfColors.green800),
+                    _buildPdfSummaryItem("ยอดขายสุทธิ", totalSales, font, fontBold, PdfColors.black),
+                    _buildPdfSummaryItem("ส่วนลดที่ให้", totalDiscount, font, fontBold, PdfColors.red800), // โชว์ส่วนลดใน PDF
+                    _buildPdfSummaryItem("เงินสด", cashSales, font, fontBold, PdfColors.green800),
                     _buildPdfSummaryItem("QR Payment", qrSales, font, fontBold, PdfColors.blue800),
-                    pw.Column(children: [
-                        pw.Text("จำนวนรายการ", style: pw.TextStyle(font: font, fontSize: 12)),
-                        pw.Text("$totalOrders", style: pw.TextStyle(font: fontBold, fontSize: 16)),
-                    ]),
                   ],
                 ),
               ),
@@ -123,13 +121,14 @@ class _FinanceScreenState extends State<FinanceScreen> {
                 cellStyle: pw.TextStyle(font: font, fontSize: 10),
                 cellAlignment: pw.Alignment.centerLeft,
                 columnWidths: {
-                  0: const pw.FixedColumnWidth(60), // เวลา
-                  1: const pw.FlexColumnWidth(),   // Order ID
-                  2: const pw.FixedColumnWidth(80), // วิธีจ่าย
-                  3: const pw.FixedColumnWidth(80), // ยอดเงิน
+                  0: const pw.FixedColumnWidth(50), 
+                  1: const pw.FlexColumnWidth(),   
+                  2: const pw.FixedColumnWidth(70), 
+                  3: const pw.FixedColumnWidth(60), 
+                  4: const pw.FixedColumnWidth(70), 
                 },
                 data: <List<String>>[
-                  <String>['เวลา', 'Order ID', 'ช่องทาง', 'ยอดเงิน (บาท)'],
+                  <String>['เวลา', 'Order ID', 'ช่องทาง', 'ส่วนลด', 'ยอดสุทธิ'],
                   ...transactions.map((doc) {
                     final data = doc.data() as Map<String, dynamic>;
                     final ts = (data['timestamp'] as Timestamp).toDate();
@@ -137,25 +136,18 @@ class _FinanceScreenState extends State<FinanceScreen> {
                     final orderId = data['orderId'] ?? '-';
                     final method = data['paymentMethod'] ?? 'Cash';
                     final price = (data['totalPrice'] ?? 0).toDouble();
+                    final discount = (data['discount'] ?? 0).toDouble();
                     
                     return [
                       timeStr,
                       "#$orderId",
-                      method == 'QR' ? 'QR Payment' : 'เงินสด',
+                      method == 'QR' ? 'QR' : 'เงินสด',
+                      discount > 0 ? "-${NumberFormat('#,##0').format(discount)}" : "-",
                       NumberFormat('#,##0').format(price),
                     ];
                   }).toList(),
                 ],
               ),
-
-              pw.Spacer(),
-              pw.Divider(),
-              pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.end,
-                children: [
-                  pw.Text("ผู้ตรวจสอบ: ____________________", style: pw.TextStyle(font: font, fontSize: 12)),
-                ]
-              )
             ],
           );
         },
@@ -167,10 +159,10 @@ class _FinanceScreenState extends State<FinanceScreen> {
 
   pw.Widget _buildPdfSummaryItem(String title, double value, pw.Font font, pw.Font fontBold, PdfColor color) {
     return pw.Column(children: [
-      pw.Text(title, style: pw.TextStyle(font: font, fontSize: 12)),
+      pw.Text(title, style: pw.TextStyle(font: font, fontSize: 10)),
       pw.Text(
         NumberFormat('#,##0.00').format(value), 
-        style: pw.TextStyle(font: fontBold, fontSize: 16, color: color)
+        style: pw.TextStyle(font: fontBold, fontSize: 14, color: color)
       ),
     ]);
   }
@@ -238,7 +230,7 @@ class _FinanceScreenState extends State<FinanceScreen> {
                       return const Center(child: Text("ไม่มีข้อมูล"));
                     }
 
-                    // 1. กรองข้อมูล
+                    // 1. กรองข้อมูลเฉพาะวันที่เลือก
                     var docs = snapshot.data!.docs.where((doc) {
                       Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
                       if (data['timestamp'] == null) return false;
@@ -259,6 +251,7 @@ class _FinanceScreenState extends State<FinanceScreen> {
 
                     // 3. คำนวณยอดเงิน
                     double totalSales = 0;
+                    double totalDiscount = 0; // 🔥 ตัวแปรเก็บยอดส่วนลด
                     double cashSales = 0;
                     double qrSales = 0;
                     int cashCount = 0;
@@ -266,10 +259,13 @@ class _FinanceScreenState extends State<FinanceScreen> {
 
                     for (var doc in docs) {
                       var data = doc.data() as Map<String, dynamic>;
-                      double price = (data['totalPrice'] ?? 0).toDouble();
+                      double price = (data['totalPrice'] ?? 0).toDouble(); // ยอดสุทธิ
+                      double discount = (data['discount'] ?? 0).toDouble(); // ยอดส่วนลด
                       String method = data['paymentMethod'] ?? 'Cash';
 
                       totalSales += price;
+                      totalDiscount += discount;
+                      
                       if (method == 'QR') {
                         qrSales += price;
                         qrCount++;
@@ -283,8 +279,36 @@ class _FinanceScreenState extends State<FinanceScreen> {
                       padding: const EdgeInsets.all(16),
                       child: Column(
                         children: [
+                          // การ์ดสรุปยอดรวม (Net Sales)
                           _buildTotalCard(totalSales, docs.length),
+
+                          const SizedBox(height: 10),
+
+                          // --- 🔥 การ์ดแสดงส่วนลด ---
+                          if (totalDiscount > 0)
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.red[50],
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: Colors.red.withOpacity(0.3)),
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Row(children: [
+                                    Icon(Icons.discount, color: Colors.red),
+                                    SizedBox(width: 8),
+                                    Text("ส่วนลดที่ให้ไปวันนี้", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+                                  ]),
+                                  Text("- ฿${NumberFormat('#,##0.00').format(totalDiscount)}", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.red)),
+                                ],
+                              ),
+                            ),
+
                           const SizedBox(height: 20),
+
+                          // แยกประเภท (Cash vs QR)
                           Row(
                             children: [
                               Expanded(child: _buildMethodCard("เงินสด (Cash)", cashSales, cashCount, Icons.payments, Colors.green)),
@@ -292,10 +316,12 @@ class _FinanceScreenState extends State<FinanceScreen> {
                               Expanded(child: _buildMethodCard("QR Payment", qrSales, qrCount, Icons.qr_code_2, Colors.blue)),
                             ],
                           ),
+
                           const SizedBox(height: 30),
                           const Align(alignment: Alignment.centerLeft, child: Text("รายการเดินบัญชี (ล่าสุด)", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF5D4037)))),
                           const SizedBox(height: 10),
 
+                          // รายการย้อนหลัง
                           if (docs.isEmpty) 
                             const Padding(padding: EdgeInsets.all(20), child: Text("ไม่มีรายการขายในวันนี้", style: TextStyle(color: Colors.grey)))
                           else
@@ -309,6 +335,7 @@ class _FinanceScreenState extends State<FinanceScreen> {
                                 String timeStr = DateFormat('HH:mm').format((data['timestamp'] as Timestamp).toDate());
                                 String method = data['paymentMethod'] ?? 'Cash';
                                 double price = (data['totalPrice'] ?? 0).toDouble();
+                                double discount = (data['discount'] ?? 0).toDouble();
                                 String orderId = data['orderId'] ?? '-';
 
                                 return Card(
@@ -321,7 +348,14 @@ class _FinanceScreenState extends State<FinanceScreen> {
                                       child: Icon(method == 'QR' ? Icons.qr_code : Icons.money, color: method == 'QR' ? Colors.blue : Colors.green, size: 20),
                                     ),
                                     title: Text("Order #$orderId", style: const TextStyle(fontWeight: FontWeight.bold)),
-                                    subtitle: Text("เวลา: $timeStr"),
+                                    subtitle: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text("เวลา: $timeStr"),
+                                        if (discount > 0) 
+                                          Text("ส่วนลด: -${NumberFormat('#,##0').format(discount)}", style: const TextStyle(color: Colors.red, fontSize: 12)),
+                                      ],
+                                    ),
                                     trailing: Text("+${price.toStringAsFixed(0)}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF5D4037))),
                                   ),
                                 );
@@ -330,7 +364,7 @@ class _FinanceScreenState extends State<FinanceScreen> {
 
                           const SizedBox(height: 30),
                           
-                          // --- 🔥 ปุ่มพิมพ์รายงาน PDF ---
+                          // ปุ่มพิมพ์รายงาน PDF
                           SizedBox(
                             width: double.infinity,
                             height: 55,
@@ -339,10 +373,11 @@ class _FinanceScreenState extends State<FinanceScreen> {
                                 _printFinanceReport(
                                   date: _selectedDate,
                                   totalSales: totalSales,
+                                  totalDiscount: totalDiscount, // ส่งค่าส่วนลด
                                   cashSales: cashSales,
                                   qrSales: qrSales,
                                   totalOrders: docs.length,
-                                  transactions: docs, // ส่งรายการไปพิมพ์
+                                  transactions: docs,
                                 );
                               },
                               icon: const Icon(Icons.print),

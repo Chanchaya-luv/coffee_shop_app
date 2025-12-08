@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
-
 import 'print_bill_screen.dart';
 
 class OrderDetailScreen extends StatelessWidget {
@@ -9,12 +8,12 @@ class OrderDetailScreen extends StatelessWidget {
 
   const OrderDetailScreen({super.key, required this.orderId});
 
-  // --- 🛠️ ฟังก์ชันอัปเดตสถานะ (แก้ไขให้รับ tableNo มาด้วย) ---
+  // --- ฟังก์ชันอัปเดตสถานะ (เหมือนเดิม) ---
   void _updateStatus(BuildContext context, String currentStatus, String tableNo) {
     String newStatus = '';
     String actionLabel = '';
 
-    // Logic เปลี่ยนสถานะตามลำดับ
+    // Logic เปลี่ยนสถานะ
     if (currentStatus == 'pending') {
       newStatus = 'cooking';
       actionLabel = 'เริ่มทำอาหาร (Cooking)';
@@ -25,22 +24,20 @@ class OrderDetailScreen extends StatelessWidget {
       newStatus = 'completed';
       actionLabel = 'จบออเดอร์ (Completed)';
     } else {
-      return; // ถ้าจบแล้วไม่ต้องทำอะไร
+      return; 
     }
 
-    // 1. อัปเดตสถานะออเดอร์
+    // อัปเดตสถานะออเดอร์
     FirebaseFirestore.instance.collection('orders').doc(orderId).update({
       'status': newStatus,
     });
 
-    // --- 🔥 2. จุดสำคัญ: ถ้าจบออเดอร์ ให้เปลี่ยนสถานะโต๊ะเป็น "ว่าง" (สีเขียว) ---
+    // ถ้าจบออเดอร์ ให้คืนโต๊ะ
     if (newStatus == 'completed') {
-      // เช็คว่าเป็นเลขโต๊ะไหม (ถ้าเป็น TA หรือขีด - ไม่ต้องทำ)
       if (int.tryParse(tableNo) != null) {
-        FirebaseFirestore.instance.collection('tables').doc(tableNo).set({
-          'id': tableNo,
-          'status': 'available' // ✅ คืนสถานะว่างทันที
-        }, SetOptions(merge: true));
+        FirebaseFirestore.instance.collection('tables').doc(tableNo).update({
+          'status': 'available' 
+        }).catchError((e){});
       }
     }
 
@@ -72,13 +69,19 @@ class OrderDetailScreen extends StatelessWidget {
 
           var data = snapshot.data!.data() as Map<String, dynamic>;
           
+          // ดึงข้อมูลพื้นฐาน
           String displayId = data['orderId'] ?? 'Unknown';
           String tableNo = data['tableNumber'] ?? '-';
-          String status = data['status'] ?? 'pending';
+          String status = data['status'] ?? 'pending'; 
           Timestamp? ts = data['timestamp'];
           String dateStr = ts != null ? DateFormat('d MMM yy, HH.mm น.').format(ts.toDate()) : '-';
-          double totalPrice = (data['totalPrice'] ?? 0).toDouble();
+          
+          // --- 🔥 คำนวณราคาและส่วนลด ---
+          double totalPrice = (data['totalPrice'] ?? 0).toDouble(); // ยอดสุทธิ (Net)
+          double discount = (data['discount'] ?? 0).toDouble();     // ส่วนลด
+          double originalPrice = totalPrice + discount;            // ยอดก่อนลด (Total)
 
+          // ดึงรายการอาหาร
           List<dynamic> rawItems = data['items'] ?? [];
           Map<String, int> itemCounts = {};
           for (var item in rawItems) {
@@ -92,7 +95,7 @@ class OrderDetailScreen extends StatelessWidget {
                   child: Column(
                     children: [
                       const SizedBox(height: 20),
-                      // แสดงสถานะ
+                      // ป้ายสถานะ
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                         decoration: BoxDecoration(
@@ -111,7 +114,7 @@ class OrderDetailScreen extends StatelessWidget {
                       
                       const SizedBox(height: 20),
 
-                      // รายการอาหาร
+                      // --- Card รายการอาหาร ---
                       Container(
                         margin: const EdgeInsets.symmetric(horizontal: 20),
                         padding: const EdgeInsets.all(20),
@@ -144,14 +147,16 @@ class OrderDetailScreen extends StatelessWidget {
                                 );
                               },
                             ),
+                            const Divider(height: 30),
+                            
+                            // --- 🔥 ส่วนแสดงยอดเงินและส่วนลด (เพิ่มใหม่) ---
+                            _buildPriceRow("ยอดรวมสินค้า", originalPrice, isBold: false),
+                            
+                            if (discount > 0)
+                              _buildPriceRow("ส่วนลด", discount, color: Colors.red, isNegative: true),
+                            
                             const Divider(),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                const Text("ยอดรวม", style: TextStyle(fontWeight: FontWeight.bold)),
-                                Text("฿${totalPrice.toStringAsFixed(0)}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Color(0xFFA6C48A))),
-                              ],
-                            )
+                            _buildPriceRow("ยอดสุทธิ", totalPrice, isBold: true, color: const Color(0xFFA6C48A), fontSize: 20),
                           ],
                         ),
                       ),
@@ -160,7 +165,7 @@ class OrderDetailScreen extends StatelessWidget {
                 ),
               ),
 
-              // Action Bar
+              // --- Footer: ปุ่มจัดการสถานะ ---
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
@@ -169,7 +174,6 @@ class OrderDetailScreen extends StatelessWidget {
                 ),
                 child: Column(
                   children: [
-                    // ปุ่มเปลี่ยนสถานะ
                     if (status != 'completed' && status != 'cancelled')
                       SizedBox(
                         width: double.infinity,
@@ -179,7 +183,6 @@ class OrderDetailScreen extends StatelessWidget {
                             backgroundColor: _getNextStatusColor(status),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                           ),
-                          // --- 🔥 เรียกใช้ฟังก์ชันโดยส่ง tableNo เข้าไปด้วย ---
                           onPressed: () => _updateStatus(context, status, tableNo),
                           child: Text(_getNextStatusText(status), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
                         ),
@@ -214,6 +217,24 @@ class OrderDetailScreen extends StatelessWidget {
     );
   }
 
+  // --- Widget ช่วยสร้างแถวราคา ---
+  Widget _buildPriceRow(String label, double amount, {bool isBold = false, Color color = Colors.black87, double fontSize = 16, bool isNegative = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: TextStyle(fontSize: fontSize, fontWeight: isBold ? FontWeight.bold : FontWeight.normal, color: color)),
+          Text(
+            "${isNegative ? '-' : ''}฿${amount.toStringAsFixed(0)}", 
+            style: TextStyle(fontSize: fontSize, fontWeight: isBold ? FontWeight.bold : FontWeight.normal, color: color)
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Helper: สีของสถานะ
   Color _getStatusColor(String status) {
     switch (status) {
       case 'pending': return Colors.orange;
@@ -224,6 +245,7 @@ class OrderDetailScreen extends StatelessWidget {
     }
   }
 
+  // Helper: ข้อความสถานะ
   String _getStatusText(String status) {
     switch (status) {
       case 'pending': return "รอทำ (Pending)";
@@ -234,6 +256,7 @@ class OrderDetailScreen extends StatelessWidget {
     }
   }
 
+  // Helper: ข้อความปุ่มถัดไป
   String _getNextStatusText(String status) {
     switch (status) {
       case 'pending': return "รับออเดอร์ (เริ่มทำ)";
@@ -243,6 +266,7 @@ class OrderDetailScreen extends StatelessWidget {
     }
   }
 
+  // Helper: สีปุ่มถัดไป
   Color _getNextStatusColor(String status) {
     switch (status) {
       case 'pending': return Colors.blue;

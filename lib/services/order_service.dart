@@ -5,73 +5,60 @@ import '../models/model_menu.dart';
 class OrderService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  Future<String> placeOrder(List<MenuItem> items, String tableNumber, String paymentMethod, String s) async {
+  // 🔥 เพิ่ม parameter: discount (ส่วนลด)
+  Future<String> placeOrder(List<MenuItem> items, String tableNumber, String paymentMethod, String branchName, double discount) async {
     return await _db.runTransaction((transaction) async {
       
-      // ====================================================
-      // 🟢 PHASE 1: อ่านข้อมูลที่จำเป็นทั้งหมดก่อน (Reads)
-      // ====================================================
-
-      // 1.1 อ่านตัวนับเลข (Order Counter)
+      // 1. อ่านข้อมูลที่จำเป็น (เหมือนเดิม)
       DocumentReference counterRef = _db.collection('metadata').doc('order_counter');
       DocumentSnapshot counterSnapshot = await transaction.get(counterRef);
 
-      // 1.2 อ่านข้อมูลวัตถุดิบทั้งหมดที่ต้องใช้ (Ingredients)
-      // (เก็บ Snapshot ไว้ใน Map เพื่อเอาไปคำนวณทีหลัง)
+      // (ส่วนอ่านวัตถุดิบ... เหมือนเดิม ผมละไว้เพื่อความกระชับ)
       Map<String, DocumentSnapshot> ingredientSnapshots = {};
-      
-      // รวบรวม ID วัตถุดิบทั้งหมดที่ไม่ซ้ำกันก่อน
       Set<String> ingredientIdsToCheck = {};
       for (var item in items) {
         if (item.recipe.isNotEmpty) {
           for (var recipeItem in item.recipe) {
-            if (recipeItem.ingredientId.isNotEmpty) {
-              ingredientIdsToCheck.add(recipeItem.ingredientId);
-            }
+            if (recipeItem.ingredientId.isNotEmpty) ingredientIdsToCheck.add(recipeItem.ingredientId);
           }
         }
       }
-
-      // วนลูปอ่านข้อมูลวัตถุดิบ (Read Only)
       for (String ingId in ingredientIdsToCheck) {
         DocumentReference ref = _db.collection('ingredients').doc(ingId);
-        DocumentSnapshot snap = await transaction.get(ref); // อ่านแล้วเก็บไว้
+        DocumentSnapshot snap = await transaction.get(ref);
         ingredientSnapshots[ingId] = snap;
       }
 
-      // ====================================================
-      // 🔴 PHASE 2: คำนวณและบันทึกข้อมูล (Writes)
-      // ====================================================
-
-      // 2.1 คำนวณสต๊อกใหม่ใน Memory (ยังไม่บันทึก)
+      // 2. คำนวณสต๊อกและตัดยอด (เหมือนเดิม)
       Map<String, double> stockUpdates = {}; 
-
-      // เริ่มต้นด้วยค่าสต๊อกปัจจุบันจากที่อ่านมา
       ingredientSnapshots.forEach((id, snap) {
         if (snap.exists) {
           var data = snap.data() as Map<String, dynamic>;
           stockUpdates[id] = (data['currentStock'] ?? 0).toDouble();
         }
       });
-
-      // วนลูปตัดยอดจาก Memory
       for (var item in items) {
         for (var recipeItem in item.recipe) {
           String id = recipeItem.ingredientId;
           if (stockUpdates.containsKey(id)) {
-            // ตัดยอดสะสม
             stockUpdates[id] = stockUpdates[id]! - recipeItem.quantityUsed;
           }
         }
       }
-
-      // 2.2 บันทึกค่าสต๊อกใหม่ลง Database (Write จริง)
       stockUpdates.forEach((id, newStock) {
         DocumentReference ref = _db.collection('ingredients').doc(id);
         transaction.update(ref, {'currentStock': newStock});
       });
 
-      // 2.3 คำนวณเลข Order ID (จากที่อ่านมาในข้อ 1.1)
+      // 3. คำนวณราคา (เพิ่มส่วนลด)
+      List<String> itemNames = items.map((e) => e.name).toList();
+      double totalPrice = items.fold(0, (sum, item) => sum + item.price);
+      
+      // 🔥 คำนวณยอดสุทธิ (Net Price)
+      double netPrice = totalPrice - discount;
+      if (netPrice < 0) netPrice = 0; // กันติดลบ
+
+      // 4. สร้าง ID
       int currentCount = 0;
       String lastDate = '';
       String todayStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
@@ -85,28 +72,23 @@ class OrderService {
       int newCount = (lastDate == todayStr) ? currentCount + 1 : 1;
       String runningId = newCount.toString().padLeft(4, '0');
 
-      // 2.4 สร้างและบันทึกออเดอร์ (Write)
-      DocumentReference orderRef = _db.collection('orders').doc(runningId); // ใช้ runningId เป็น Doc ID
-      List<String> itemNames = items.map((e) => e.name).toList();
-      double totalPrice = items.fold(0, (sum, item) => sum + item.price);
-
+      // 5. บันทึกออเดอร์ (เพิ่ม field discount, netPrice)
+      DocumentReference orderRef = _db.collection('orders').doc(runningId);
       transaction.set(orderRef, {
         'orderId': runningId,       
         'tableNumber': tableNumber, 
         'items': itemNames,         
-        'totalPrice': totalPrice,   
+        'totalPrice': netPrice,     // 🔥 บันทึกยอดที่ลดแล้วเป็นยอดขายจริง
+        'originalPrice': totalPrice, // เก็บราคาเต็มไว้ดูเล่น
+        'discount': discount,       // เก็บยอดส่วนลด
         'status': 'pending',
         'paymentMethod': paymentMethod,
+        'branchName': branchName,
         'timestamp': FieldValue.serverTimestamp(), 
       });
 
-      // 2.5 บันทึกตัวนับเลขใหม่ (Write)
-      transaction.set(counterRef, {
-        'count': newCount,
-        'date': todayStr
-      });
+      transaction.set(counterRef, {'count': newCount, 'date': todayStr});
 
-      // 2.6 อัปเดตสถานะโต๊ะ (Write)
       if (int.tryParse(tableNumber) != null) {
         DocumentReference tableRef = _db.collection('tables').doc(tableNumber);
         transaction.set(tableRef, {'id': tableNumber, 'status': 'occupied'}, SetOptions(merge: true));
