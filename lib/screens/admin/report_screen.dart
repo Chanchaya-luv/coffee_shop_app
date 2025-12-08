@@ -243,7 +243,7 @@ class _ReportScreenState extends State<ReportScreen> {
                           ),
                           
                           const SizedBox(height: 30),
-                          const Text("🏆 3 อันดับเมนูขายดี", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF5D4037))),
+                          const Text("3 อันดับเมนูขายดี", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF5D4037))),
                           const SizedBox(height: 15),
 
                           if (sortedMenu.isEmpty)
