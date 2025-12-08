@@ -26,6 +26,7 @@ class PaymentScreen extends StatefulWidget {
     required this.tableNumber,
     this.discount = 0.0,
     this.isCustomer = false,
+
   });
 
   @override
