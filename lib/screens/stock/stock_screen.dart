@@ -20,6 +20,12 @@ class _StockScreenState extends State<StockScreen> {
     final unitCtrl = TextEditingController(text: isEditing ? data!['unit'] : '');
     final customCatCtrl = TextEditingController(); 
 
+    // --- 🔥 เพิ่มตัวแปรสำหรับต้นทุน ---
+    // ราคาซื้อ (เช่น 45 บาท)
+    final costCtrl = TextEditingController(text: isEditing && data!['purchasePrice'] != null ? data['purchasePrice'].toString() : '');
+    // ปริมาณที่ซื้อ (เช่น 1000 ml)
+    final packSizeCtrl = TextEditingController(text: isEditing && data!['packSize'] != null ? data['packSize'].toString() : '');
+
     // หมวดหมู่ที่มีอยู่แล้ว (Hardcode ไว้เป็นตัวเลือกพื้นฐาน + เดี๋ยวจะดึงเพิ่มจาก DB ถ้าทำได้ แต่แค่นี้ก็พอสำหรับ Dialog)
     List<String> baseCategories = ["ผง", "น้ำตาล", "นม", "ไซรัป", "เมล็ดกาแฟ", "แก้ว/ฝา", "อื่นๆ"];
     
@@ -36,6 +42,9 @@ class _StockScreenState extends State<StockScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setState) {
+          double price = double.tryParse(costCtrl.text) ?? 0;
+                  double size = double.tryParse(packSizeCtrl.text) ?? 0;
+                  double costPerUnit = (size > 0) ? price / size : 0;
           return AlertDialog(
             title: Text(isEditing ? "แก้ไขวัตถุดิบ" : "เพิ่มวัตถุดิบใหม่"),
             content: SingleChildScrollView(
@@ -69,14 +78,23 @@ class _StockScreenState extends State<StockScreen> {
                       ),
                     ),
 
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 15),
+                  const Divider(),
+                  const Text("ตั้งค่าต้นทุน (สำหรับคำนวณ GP)", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
+                  
+                  // --- 🔥 ช่องกรอกต้นทุน ---
                   Row(
                     children: [
-                      Expanded(flex: 2, child: TextField(controller: stockCtrl, decoration: const InputDecoration(labelText: "คงเหลือ", prefixIcon: Icon(Icons.numbers)), keyboardType: const TextInputType.numberWithOptions(decimal: true))),
+                      Expanded(child: TextField(controller: costCtrl, decoration: const InputDecoration(labelText: "ราคาซื้อ (บาท)", prefixIcon: Icon(Icons.attach_money)), keyboardType: TextInputType.number, onChanged: (v)=>setState((){}))),
                       const SizedBox(width: 10),
-                      Expanded(flex: 1, child: TextField(controller: unitCtrl, decoration: const InputDecoration(labelText: "หน่วย", hintText: "g, ml"))),
+                      Expanded(child: TextField(controller: packSizeCtrl, decoration: const InputDecoration(labelText: "ปริมาณต่อแพ็ค", prefixIcon: Icon(Icons.scale)), keyboardType: TextInputType.number, onChanged: (v)=>setState((){}))),
                     ],
                   ),
+                  const SizedBox(height: 5),
+                  // แสดงผลคำนวณ
+                  
+                  if (price > 0 && size > 0)
+                    Text("ตกเฉลี่ย: ${costPerUnit.toStringAsFixed(4)} บาท / ${unitCtrl.text.isEmpty ? 'หน่วย' : unitCtrl.text}", style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 12)),
                 ],
               ),
             ),
@@ -100,6 +118,11 @@ class _StockScreenState extends State<StockScreen> {
                   if (nameCtrl.text.isNotEmpty) {
                     String finalCategory = isCustomCat ? customCatCtrl.text.trim() : selectedCat;
                     if (finalCategory.isEmpty) finalCategory = "อื่นๆ";
+                    
+                    // คำนวณ costPerUnit
+                    double pPrice = double.tryParse(costCtrl.text) ?? 0;
+                    double pSize = double.tryParse(packSizeCtrl.text) ?? 0;
+                    double costPerUnit = (pSize > 0) ? pPrice / pSize : 0;
 
                     final Map<String, dynamic> ingredientData = {
                       'name': nameCtrl.text.trim(),
@@ -107,6 +130,10 @@ class _StockScreenState extends State<StockScreen> {
                       'currentStock': double.tryParse(stockCtrl.text) ?? 0,
                       'unit': unitCtrl.text.trim(),
                       'minThreshold': 200, 
+                      // บันทึกข้อมูลต้นทุน
+                      'purchasePrice': pPrice,
+                      'packSize': pSize,
+                      'costPerUnit': costPerUnit, // ค่านี้จะเอาไปใช้คิด GP
                     };
 
                     if (isEditing) {
