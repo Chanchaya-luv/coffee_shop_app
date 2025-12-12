@@ -20,7 +20,7 @@ class _ProductCustomizeDialogState extends State<ProductCustomizeDialog> {
   String _milk = 'นมวัว';
 
   final List<String> _sweetnessOptions = ['0%', '25%', '50%', 'ปกติ (100%)', '125%'];
-  final List<String> _milkOptions = ['นมวัว', 'นมโอ๊ต (+10)', 'นมถั่วเหลือง'];
+  final List<String> _milkOptions = ['นมวัว', 'นมโอ๊ต', 'นมถั่วเหลือง'];
 
   @override
   Widget build(BuildContext context) {
