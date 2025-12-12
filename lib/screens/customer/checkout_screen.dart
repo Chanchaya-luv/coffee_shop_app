@@ -4,6 +4,9 @@ import 'package:provider/provider.dart';
 import '../../providers/cart_provider.dart';
 import 'payment_screen.dart';
 import '../../screens/admin/table_monitor_screen.dart'; 
+// --- 🔥 เพิ่ม Import 2 ไฟล์นี้ ---
+import '../../services/promotion_service.dart';
+import '../../models/model_promotion.dart';
 
 class CheckoutScreen extends StatefulWidget {
   final String tableNumber;
@@ -31,6 +34,74 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     _currentTable = widget.tableNumber;
   }
 
+  // --- 🔥 ฟังก์ชันแสดงหน้าต่างเลือกโปรโมชั่น ---
+  void _showPromotionDialog(List<CartItem> items, double totalAmount) {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) {
+        return Container(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text("เลือกโปรโมชั่น", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 10),
+              
+              // 1. ส่วนลดกำหนดเอง (Manual)
+              ListTile(
+                leading: const Icon(Icons.edit, color: Colors.blue),
+                title: const Text("ส่วนลดกำหนดเอง (Manual)"),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _showDiscountDialog(totalAmount); // เรียก Dialog เดิม
+                },
+              ),
+              const Divider(),
+              
+              // 2. โปรโมชั่นอัตโนมัติ (Auto)
+              Expanded(
+                child: StreamBuilder<List<Promotion>>(
+                  stream: PromotionService().getActivePromotions(),
+                  builder: (context, snapshot) {
+                    if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+                    var promos = snapshot.data!;
+                    if (promos.isEmpty) return const Center(child: Text("ไม่มีโปรโมชั่นที่เปิดใช้งาน"));
+
+                    return ListView.builder(
+                      itemCount: promos.length,
+                      itemBuilder: (context, index) {
+                        var p = promos[index];
+                        // คำนวณส่วนลด
+                        double calDiscount = PromotionService().calculateDiscount(p, items, totalAmount);
+                        bool isApplicable = calDiscount > 0;
+
+                        return ListTile(
+                          leading: const Icon(Icons.local_offer, color: Colors.orange),
+                          title: Text(p.name),
+                          subtitle: Text(isApplicable ? "ลด ฿${calDiscount.toStringAsFixed(0)}" : "เงื่อนไขไม่ตรง"),
+                          trailing: isApplicable ? const Icon(Icons.check_circle, color: Colors.green) : null,
+                          enabled: isApplicable, // กดได้เฉพาะถ้าเงื่อนไขตรง
+                          onTap: isApplicable ? () {
+                            setState(() {
+                              _discountAmount = calDiscount;
+                              _discountNote = p.name;
+                            });
+                            Navigator.pop(ctx);
+                          } : null,
+                        );
+                      },
+                    );
+                  },
+                ),
+              )
+            ],
+          ),
+        );
+      }
+    );
+  }
+
+  // (Dialog เดิมของคุณ)
   void _showDiscountDialog(double totalAmount) {
      final valueCtrl = TextEditingController();
      bool isPercent = false;
@@ -89,7 +160,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     var cartItem = items[index];
                     return Row(
                       children: [
-                        // --- 🔥 ปุ่มถังขยะ: ใช้ removeItem (ลบทิ้งเลย) ---
+                        // ปุ่มถังขยะ
                         IconButton(
                           icon: const Icon(Icons.delete_outline, color: Colors.brown), 
                           onPressed: () => cart.removeItem(cartItem.key) 
@@ -106,27 +177,22 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                           )
                         ),
                         
-                        // --- 🔥 ปุ่ม +/- ปรับปรุงใหม่ กดง่ายขึ้น ---
+                        // ปุ่ม +/-
                         Container(
                           decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(8)),
                           child: Row(
                             children: [
-                              // ปุ่มลบ (-)
                               IconButton(
                                 icon: const Icon(Icons.remove, size: 18, color: Colors.black),
                                 padding: EdgeInsets.zero,
                                 constraints: const BoxConstraints(minWidth: 35, minHeight: 35),
                                 onPressed: () => cart.removeSingleItem(cartItem.key),
                               ),
-                              
-                              // ตัวเลข
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 8), 
                                 decoration: BoxDecoration(border: Border.symmetric(vertical: BorderSide(color: Colors.grey.shade300))), 
                                 child: Text("${cartItem.quantity}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))
                               ),
-
-                              // ปุ่มบวก (+)
                               IconButton(
                                 icon: const Icon(Icons.add, size: 18, color: Colors.green),
                                 padding: EdgeInsets.zero,
@@ -146,14 +212,34 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             ),
           ),
 
-          // Footer (ใช้ code เดิม)
+          // Footer
           Container(
             padding: const EdgeInsets.all(20),
             color: const Color(0xFFF9F9F9),
             child: Column(
               children: [
                 _buildSummaryRow("ยอดรวม", totalAmount),
-                InkWell(onTap: () => _showDiscountDialog(totalAmount), child: Padding(padding: const EdgeInsets.symmetric(vertical: 4), child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Row(children: [const Text("ส่วนลด", style: TextStyle(color: Colors.grey)), const SizedBox(width: 5), const Icon(Icons.edit, size: 14, color: Colors.blue), if (_discountNote.isNotEmpty) Text(" ($_discountNote)", style: const TextStyle(fontSize: 12, color: Colors.blue))]), Text("- ฿${_discountAmount.toStringAsFixed(0)}", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red))]))),
+                
+                // --- 🔥 แถวส่วนลด (กดเพื่อเรียก Popup) ---
+                InkWell(
+                  onTap: () => _showPromotionDialog(items, totalAmount), // เรียกฟังก์ชันใหม่
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(children: [
+                           const Text("ส่วนลด / โปรโมชั่น", style: TextStyle(color: Colors.grey)),
+                           const SizedBox(width: 5),
+                           const Icon(Icons.local_offer, size: 14, color: Colors.orange), // ไอคอน Tag
+                           if (_discountNote.isNotEmpty) Text(" ($_discountNote)", style: const TextStyle(fontSize: 12, color: Colors.blue)),
+                        ]),
+                        Text("- ฿${_discountAmount.toStringAsFixed(0)}", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
+                      ],
+                    ),
+                  ),
+                ),
+                
                 const Divider(),
                 Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text("ยอดรวมทั้งหมด", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF5D4037))), Text("฿${finalTotal.toStringAsFixed(0)}", style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF5D4037)))]),
                 const SizedBox(height: 20),

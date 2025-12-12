@@ -18,6 +18,9 @@ import 'edit_profile_screen.dart';
 import 'store_profile_screen.dart';
 import 'generic_settings_screen.dart';
 
+// --- 🔥 เพิ่ม Import หน้าจัดการโปรโมชั่น ---
+import '../admin/promotion_management_screen.dart';
+
 class SettingScreen extends StatefulWidget {
   const SettingScreen({super.key});
 
@@ -79,6 +82,14 @@ class _SettingScreenState extends State<SettingScreen> {
     Navigator.push(context, MaterialPageRoute(builder: (context) => page));
   }
 
+  void _navigateRestricted(BuildContext context, Widget page) {
+    if (_canEdit) {
+      Navigator.push(context, MaterialPageRoute(builder: (context) => page));
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("⛔️ ไม่มีสิทธิ์เข้าถึง (สำหรับผู้จัดการ/เจ้าของร้านเท่านั้น)"), backgroundColor: Colors.red));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     double paddingTop = MediaQuery.of(context).padding.top;
@@ -112,9 +123,7 @@ class _SettingScreenState extends State<SettingScreen> {
                   StreamBuilder<DocumentSnapshot>(
                     stream: FirebaseFirestore.instance.collection('users').doc(currentUser?.uid).snapshots(),
                     builder: (context, snapshot) {
-                      String name = "ผู้ใช้งาน";
-                      String role = "staff";
-                      String photoUrl = "";
+                      String name = "ผู้ใช้งาน"; String role = "staff"; String photoUrl = "";
                       if (snapshot.hasData && snapshot.data!.exists) {
                         var data = snapshot.data!.data() as Map<String, dynamic>;
                         name = data['name'] ?? name;
@@ -149,19 +158,19 @@ class _SettingScreenState extends State<SettingScreen> {
                       // --- 🔥 ส่งค่า isReadOnly: !_canEdit ไปบอกหน้าลูก ---
                       _buildSettingItem(
                         Icons.store, "ข้อมูลร้านค้า", 
-                        onTap: () => _navigate(context, StoreProfileScreen(isReadOnly: !_canEdit))
+                        onTap: () => _navigateRestricted(context, const StoreProfileScreen())
                       ),
                       
                       _buildSettingItem(
                         Icons.store_mall_directory, "จัดการสาขา", 
-                        onTap: () => _navigate(context, BranchManagementScreen(isReadOnly: !_canEdit))
+                        onTap: () => _navigateRestricted(context, const BranchManagementScreen())
                       ),
                       
                       _buildSettingItem(Icons.history, "ประวัติออเดอร์", onTap: () => _navigate(context, const OrderHistoryScreen())),
                       
                       _buildSettingItem(
                         Icons.payment, "การตั้งค่าการชำระเงิน", 
-                        onTap: () => _navigate(context, PaymentSettingsScreen(isReadOnly: !_canEdit))
+                        onTap: () => _navigateRestricted(context, const PaymentSettingsScreen())
                       ),
                       
                       _buildSettingItem(Icons.notifications_active_outlined, "การแจ้งเตือน", onTap: () => _navigate(context, const NotificationScreen())),
@@ -181,6 +190,14 @@ class _SettingScreenState extends State<SettingScreen> {
                     children: [
                       _buildSettingItem(Icons.inventory_2_outlined, "การจัดการวัตถุดิบ", onTap: () => _navigate(context, const StockScreen())),
                       _buildSettingItem(Icons.restaurant_menu, "การจัดการเมนู", onTap: () => _navigate(context, const ManageMenuScreen())),
+                      
+                      // --- 🔥 เพิ่มปุ่มจัดการโปรโมชั่น ---
+                      _buildSettingItem(
+                        Icons.local_offer, 
+                        "จัดการโปรโมชั่น", 
+                        onTap: () => _navigate(context, const PromotionManagementScreen())
+                      ),
+
                       _buildSettingItem(Icons.bar_chart, "การคำนวณ GP", showDivider: false, onTap: () => _navigate(context, const GPCalculatorScreen())),
                       
                     ],
