@@ -15,16 +15,29 @@ class _PromotionManagementScreenState extends State<PromotionManagementScreen> {
     final isEditing = id != null;
     
     final nameCtrl = TextEditingController(text: isEditing ? data!['name'] : '');
-    String type = isEditing ? data!['type'] : 'flat_percent';
+    
+    // --- 🔥 เปลี่ยน Default เป็น flat_amount ---
+    String type = isEditing ? data!['type'] : 'flat_amount';
+
+// 🔥 ปรับของเก่าที่เป็น flat_percent ให้เข้ากับระบบใหม่
+if (type == 'flat_percent') {
+  type = 'flat_amount';
+}
+
     
     // ตัวแปรสำหรับเงื่อนไข
-    final val1Ctrl = TextEditingController(); // percent / buy / start
+    final val1Ctrl = TextEditingController(); // amount / buy / start
     final val2Ctrl = TextEditingController(); // - / get / end
 
     // ดึงข้อมูลเดิมมาใส่ (ถ้าแก้ไข)
     if (isEditing) {
       Map conditions = data!['conditions'] ?? {};
-      if (type == 'flat_percent') {
+      
+      // --- 🔥 แก้ไขการดึงข้อมูล ---
+      if (type == 'flat_amount') {
+        val1Ctrl.text = (conditions['amount'] ?? 0).toString(); // ดึงค่า amount
+      } else if (type == 'flat_percent') { 
+        // เผื่อของเก่าที่เป็น percent ยังมีอยู่
         val1Ctrl.text = (conditions['percent'] ?? 0).toString();
       } else if (type == 'buy_x_get_y') {
         val1Ctrl.text = (conditions['buy'] ?? 1).toString();
@@ -46,7 +59,7 @@ class _PromotionManagementScreenState extends State<PromotionManagementScreen> {
               children: [
                 TextField(
                   controller: nameCtrl, 
-                  decoration: const InputDecoration(labelText: "ชื่อโปรโมชั่น", hintText: "เช่น ลด 10%, Happy Hour")
+                  decoration: const InputDecoration(labelText: "ชื่อโปรโมชั่น", hintText: "เช่น ส่วนลด 10 บาท, Happy Hour")
                 ),
                 const SizedBox(height: 10),
                 
@@ -54,7 +67,8 @@ class _PromotionManagementScreenState extends State<PromotionManagementScreen> {
                   value: type,
                   decoration: const InputDecoration(labelText: "ประเภท"),
                   items: const [
-                    DropdownMenuItem(value: 'flat_percent', child: Text("ลด % ทั้งบิล")),
+                    // --- 🔥 เปลี่ยนตัวเลือก ---
+                    DropdownMenuItem(value: 'flat_amount', child: Text("ลด (บาท) ท้ายบิล")),
                     DropdownMenuItem(value: 'time_based', child: Text("Happy Hour (ลดตามเวลา)")),
                     DropdownMenuItem(value: 'buy_x_get_y', child: Text("ซื้อ X แถม Y")),
                   ],
@@ -63,10 +77,11 @@ class _PromotionManagementScreenState extends State<PromotionManagementScreen> {
                 const SizedBox(height: 10),
                 
                 // Input ตามประเภท
-                if (type == 'flat_percent')
+                // --- 🔥 เปลี่ยนช่องกรอกเป็น บาท ---
+                if (type == 'flat_amount' || type == 'flat_percent')
                   TextField(
                     controller: val1Ctrl, 
-                    decoration: const InputDecoration(labelText: "เปอร์เซ็นต์ที่ลด (%)"), 
+                    decoration: const InputDecoration(labelText: "จำนวนเงินที่ลด (บาท)"), 
                     keyboardType: TextInputType.number
                   ),
                 
@@ -97,9 +112,15 @@ class _PromotionManagementScreenState extends State<PromotionManagementScreen> {
                 if (nameCtrl.text.isNotEmpty) {
                   Map<String, dynamic> conditions = {};
                   
-                  if (type == 'flat_percent') {
-                    conditions['percent'] = int.tryParse(val1Ctrl.text) ?? 0;
-                  } else if (type == 'buy_x_get_y') {
+                  // --- 🔥 บันทึกเป็น amount ---
+                  if (type == 'flat_amount') {
+                    conditions['amount'] = int.tryParse(val1Ctrl.text) ?? 0;
+                  } else if (type == 'flat_percent') {
+                     // แปลงของเก่าให้เป็นแบบใหม่ (หรือเก็บแบบเดิมถ้าต้องการ)
+                     type = 'flat_amount';
+                     conditions['amount'] = int.tryParse(val1Ctrl.text) ?? 0;
+                  } 
+                  else if (type == 'buy_x_get_y') {
                     conditions['buy'] = int.tryParse(val1Ctrl.text) ?? 1;
                     conditions['get'] = int.tryParse(val2Ctrl.text) ?? 1;
                   } else if (type == 'time_based') {
@@ -112,7 +133,7 @@ class _PromotionManagementScreenState extends State<PromotionManagementScreen> {
                     'name': nameCtrl.text,
                     'type': type,
                     'conditions': conditions,
-                    'isActive': true, // แก้ไขแล้วก็ให้เปิดใช้งานเลย
+                    'isActive': true, 
                   };
 
                   if (isEditing) {
@@ -132,7 +153,6 @@ class _PromotionManagementScreenState extends State<PromotionManagementScreen> {
     );
   }
 
-  // ฟังก์ชันลบ
   void _deletePromotion(String id) {
     showDialog(
       context: context, 
@@ -181,7 +201,9 @@ class _PromotionManagementScreenState extends State<PromotionManagementScreen> {
               Map conditions = data['conditions'] ?? {};
 
               String detail = "";
-              if (type == 'flat_percent') detail = "ลด ${conditions['percent']}%";
+              // --- 🔥 แสดงผลเป็นบาท ---
+              if (type == 'flat_amount') detail = "ลด ${conditions['amount']} บาท";
+              else if (type == 'flat_percent') detail = "ลด ${conditions['percent']}%"; // รองรับของเก่า
               else if (type == 'buy_x_get_y') detail = "ซื้อ ${conditions['buy']} แถม ${conditions['get']}";
               else if (type == 'time_based') detail = "${conditions['start']} - ${conditions['end']} (ลด ${conditions['percent']}%)";
 
@@ -196,11 +218,9 @@ class _PromotionManagementScreenState extends State<PromotionManagementScreen> {
                   ),
                   title: Text(data['name'], style: TextStyle(fontWeight: FontWeight.bold, color: isActive ? Colors.black : Colors.grey)),
                   subtitle: Text(detail),
-                  // --- 🔥 เพิ่มปุ่มแก้ไขและลบในแถวเดียวกัน ---
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // สวิตช์เปิด/ปิด
                       Switch(
                         value: isActive,
                         activeColor: Colors.green,
@@ -208,12 +228,10 @@ class _PromotionManagementScreenState extends State<PromotionManagementScreen> {
                           FirebaseFirestore.instance.collection('promotions').doc(docs[index].id).update({'isActive': val});
                         },
                       ),
-                      // ปุ่มแก้ไข
                       IconButton(
                         icon: const Icon(Icons.edit, color: Colors.blue),
                         onPressed: () => _showManageDialog(context, id: docs[index].id, data: data),
                       ),
-                      // ปุ่มลบ
                       IconButton(
                         icon: const Icon(Icons.delete, color: Colors.red),
                         onPressed: () => _deletePromotion(docs[index].id),

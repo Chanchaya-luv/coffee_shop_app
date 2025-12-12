@@ -1,14 +1,11 @@
+import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/model_promotion.dart';
 import '../providers/cart_provider.dart';
-import 'package:intl/intl.dart';
-import 'package:flutter/material.dart';
-
 
 class PromotionService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  // ดึงโปรโมชั่นที่เปิดใช้งานอยู่
   Stream<List<Promotion>> getActivePromotions() {
     return _db.collection('promotions')
         .where('isActive', isEqualTo: true)
@@ -16,24 +13,31 @@ class PromotionService {
         .map((snapshot) => snapshot.docs.map((doc) => Promotion.fromFirestore(doc)).toList());
   }
 
-  // คำนวณส่วนลด
   double calculateDiscount(Promotion promo, List<CartItem> items, double totalAmount) {
     double discount = 0.0;
 
-    if (promo.type == 'flat_percent') {
-      // ลด % ทั้งบิล
+    // --- 🔥 เปลี่ยน Logic: ถ้าเป็น flat_amount ให้ลดเป็นบาทตรงๆ ---
+    if (promo.type == 'flat_amount') {
+      int amount = promo.conditions['amount'] ?? 0;
+      discount = amount.toDouble();
+      
+      // ถ้าส่วนลดมากกว่าราคาสินค้า ให้ลดได้สูงสุดเท่าราคาสินค้า (ไม่ติดลบ)
+      if (discount > totalAmount) {
+        discount = totalAmount;
+      }
+    } 
+    // (รองรับของเก่า)
+    else if (promo.type == 'flat_percent') {
       int percent = promo.conditions['percent'] ?? 0;
       discount = totalAmount * (percent / 100);
     } 
     else if (promo.type == 'time_based') {
-      // ลด % เฉพาะช่วงเวลา
       String startStr = promo.conditions['start'] ?? '00:00';
       String endStr = promo.conditions['end'] ?? '23:59';
       int percent = promo.conditions['percent'] ?? 0;
 
       DateTime now = DateTime.now();
       TimeOfDay current = TimeOfDay.fromDateTime(now);
-      
       TimeOfDay start = _parseTime(startStr);
       TimeOfDay end = _parseTime(endStr);
 
@@ -42,9 +46,6 @@ class PromotionService {
       }
     } 
     else if (promo.type == 'buy_x_get_y') {
-      // ซื้อ X แถม Y (นับจำนวนแก้วรวม)
-      // *Logic อย่างง่าย: ลดราคาของแก้วที่ถูกที่สุด หรือเฉลี่ยราคา
-      // ในที่นี้ขอใช้ Logic: ลดราคาเฉลี่ยต่อแก้ว ตามจำนวนสิทธิ์ที่ได้
       int buy = promo.conditions['buy'] ?? 2;
       int get = promo.conditions['get'] ?? 1;
       int setSize = buy + get;
@@ -54,7 +55,6 @@ class PromotionService {
 
       if (totalItems >= setSize) {
         int freeItems = (totalItems / setSize).floor() * get;
-        // สมมติลดราคาเฉลี่ย (เพื่อให้ง่ายต่อการคำนวณแบบคละเมนู)
         if (totalItems > 0) {
            double avgPrice = totalAmount / totalItems;
            discount = avgPrice * freeItems;
