@@ -36,10 +36,18 @@ class _ReportScreenState extends State<ReportScreen> {
     }
   }
 
-  // --- ฟังก์ชันสร้าง PDF (เพิ่ม totalDiscount) ---
+  // --- ฟังก์ชันตัดคำในวงเล็บทิ้ง ---
+  String _cleanMenuName(String fullName) {
+    if (fullName.contains(' (')) {
+      return fullName.split(' (')[0]; // ตัดตั้งแต่เจอวงเล็บเปิด
+    }
+    return fullName;
+  }
+
+  // --- ฟังก์ชันสร้าง PDF ---
   Future<void> _printReport({
     required double totalSales,
-    required double totalDiscount, // 🔥 1. รับค่าส่วนลด
+    required double totalDiscount,
     required int totalCups,
     required int totalOrders,
     required List<MapEntry<String, int>> topMenus,
@@ -55,6 +63,7 @@ class _ReportScreenState extends State<ReportScreen> {
     else if (_selectedPeriod == 'Monthly') periodText = 'รายเดือน (Monthly)';
     else periodText = 'รายปี (Yearly)';
 
+    // เอาแค่ 3 อันดับ
     final top3Menus = topMenus.take(3).toList();
 
     doc.addPage(
@@ -77,10 +86,9 @@ class _ReportScreenState extends State<ReportScreen> {
               ),
               pw.SizedBox(height: 20),
               
-              // --- 🔥 สรุป 4 ช่อง ใน PDF (เพิ่มส่วนลด) ---
               pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
                 _buildPdfStatBox("ยอดขายสุทธิ", "${NumberFormat('#,##0.00').format(totalSales)} บ.", font, fontBold, PdfColors.green800),
-                _buildPdfStatBox("ส่วนลดรวม", "${NumberFormat('#,##0.00').format(totalDiscount)} บ.", font, fontBold, PdfColors.red800), // ช่องใหม่
+                _buildPdfStatBox("ส่วนลดรวม", "${NumberFormat('#,##0.00').format(totalDiscount)} บ.", font, fontBold, PdfColors.red800),
                 _buildPdfStatBox("จำนวนออเดอร์", "$totalOrders บิล", font, fontBold, PdfColors.blue800),
                 _buildPdfStatBox("จำนวนแก้ว", "$totalCups แก้ว", font, fontBold, PdfColors.orange800),
               ]),
@@ -93,7 +101,12 @@ class _ReportScreenState extends State<ReportScreen> {
                 headerStyle: pw.TextStyle(font: fontBold, fontSize: 12, color: PdfColors.white),
                 headerDecoration: const pw.BoxDecoration(color: PdfColors.brown),
                 cellStyle: pw.TextStyle(font: font, fontSize: 12),
-                data: <List<String>>[<String>['อันดับ', 'ชื่อเมนู', 'จำนวน'], ...top3Menus.asMap().entries.map((e) => [(e.key + 1).toString(), e.value.key, e.value.value.toString()])],
+                data: <List<String>>[
+                  <String>['อันดับ', 'ชื่อเมนู', 'จำนวน (แก้ว)'],
+                  ...top3Menus.asMap().entries.map((entry) {
+                    return [(entry.key + 1).toString(), entry.value.key, entry.value.value.toString()];
+                  }).toList(),
+                ],
                 columnWidths: {0: const pw.FixedColumnWidth(50), 1: const pw.FlexColumnWidth(), 2: const pw.FixedColumnWidth(100)},
               ),
             ],
@@ -158,7 +171,7 @@ class _ReportScreenState extends State<ReportScreen> {
                     List<DocumentSnapshot> filteredDocs = _filterDocsByPeriod(docs);
 
                     double totalSales = 0;
-                    double totalDiscount = 0; // 🔥 ตัวแปรเก็บส่วนลดรวม
+                    double totalDiscount = 0;
                     int totalCups = 0;
                     int totalOrders = 0;
                     Map<String, int> menuPopularity = {};
@@ -168,18 +181,20 @@ class _ReportScreenState extends State<ReportScreen> {
                       Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
                       if (data['status'] != 'cancelled') {
                         double price = (data['totalPrice'] ?? 0).toDouble();
-                        double discount = (data['discount'] ?? 0).toDouble(); // ดึงค่าส่วนลด
+                        double discount = (data['discount'] ?? 0).toDouble();
                         
                         totalSales += price;
-                        totalDiscount += discount; // บวกเพิ่ม
+                        totalDiscount += discount;
                         totalOrders += 1;
                         
                         List<dynamic> items = data['items'] ?? [];
                         totalCups += items.length;
 
                         for (var item in items) {
-                          String itemName = item.toString();
-                          menuPopularity[itemName] = (menuPopularity[itemName] ?? 0) + 1;
+                          // --- 🔥 จุดแก้ไข: ตัดคำในวงเล็บทิ้ง ---
+                          String fullName = item.toString();
+                          String cleanName = _cleanMenuName(fullName);
+                          menuPopularity[cleanName] = (menuPopularity[cleanName] ?? 0) + 1;
                         }
 
                         Timestamp? ts = data['timestamp'];
@@ -215,22 +230,7 @@ class _ReportScreenState extends State<ReportScreen> {
                           
                           const SizedBox(height: 20),
 
-                          // --- 🔥 เพิ่มการ์ดส่วนลด (ถ้ามี) ---
-                          if (totalDiscount > 0)
-                            Container(
-                              margin: const EdgeInsets.only(bottom: 20),
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(color: Colors.red[50], borderRadius: BorderRadius.circular(15), border: Border.all(color: Colors.red.withOpacity(0.3))),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  const Text("🏷️ ส่วนลดที่ให้ไปทั้งหมด", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
-                                  Text("- ฿${NumberFormat('#,##0.00').format(totalDiscount)}", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.red)),
-                                ],
-                              ),
-                            ),
-
-                          // สรุปยอด 3 ช่องเดิม
+                          // สรุปยอด
                           Row(
                             children: [
                               Expanded(child: _buildSummaryCard("ยอดขายสุทธิ", "฿${NumberFormat('#,##0').format(totalSales)}", Icons.monetization_on, Colors.green)),
@@ -241,6 +241,18 @@ class _ReportScreenState extends State<ReportScreen> {
                             ],
                           ),
                           
+                          // แสดงส่วนลด
+                          if (totalDiscount > 0)
+                            Container(
+                              margin: const EdgeInsets.only(top: 10),
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(color: Colors.red[50], borderRadius: BorderRadius.circular(15), border: Border.all(color: Colors.red.withOpacity(0.3))),
+                              child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                                const Row(children: [Icon(Icons.discount, color: Colors.red), SizedBox(width: 8), Text("ส่วนลดที่ให้ไปทั้งหมด", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))]),
+                                Text("- ฿${NumberFormat('#,##0.00').format(totalDiscount)}", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.red)),
+                              ]),
+                            ),
+
                           const SizedBox(height: 30),
                           const Text("🏆 3 อันดับเมนูขายดี", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF5D4037))),
                           const SizedBox(height: 15),
@@ -251,6 +263,7 @@ class _ReportScreenState extends State<ReportScreen> {
                             ListView.separated(
                               shrinkWrap: true,
                               physics: const NeverScrollableScrollPhysics(),
+                              // 🔥 จำกัดแค่ 3 รายการ
                               itemCount: sortedMenu.length > 3 ? 3 : sortedMenu.length,
                               separatorBuilder: (_,__) => const SizedBox(height: 10),
                               itemBuilder: (context, index) {
@@ -266,13 +279,7 @@ class _ReportScreenState extends State<ReportScreen> {
                             width: double.infinity,
                             height: 55,
                             child: ElevatedButton.icon(
-                              onPressed: () => _printReport(
-                                totalSales: totalSales, 
-                                totalDiscount: totalDiscount, // 🔥 ส่งค่าส่วนลดไปพิมพ์
-                                totalCups: totalCups, 
-                                totalOrders: totalOrders, 
-                                topMenus: sortedMenu
-                              ),
+                              onPressed: () => _printReport(totalSales: totalSales, totalDiscount: totalDiscount, totalCups: totalCups, totalOrders: totalOrders, topMenus: sortedMenu),
                               icon: const Icon(Icons.print),
                               label: const Text("พิมพ์รายงาน (PDF)", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                               style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6F4E37), foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
@@ -291,11 +298,95 @@ class _ReportScreenState extends State<ReportScreen> {
       },
     );
   }
-  // (ฟังก์ชันย่อยอื่นๆ _getChartTitle, _buildLineChart, _filterDocsByPeriod, _buildPeriodTab, _buildSummaryCard, _buildTopMenuCard เหมือนเดิม ก๊อปปี้จากไฟล์เดิมได้เลยครับ)
-  String _getChartTitle() { if (_selectedPeriod == 'Daily') return "ยอดขายรายชั่วโมง (วันนี้)"; if (_selectedPeriod == 'Weekly') return "ยอดขายรายวัน (สัปดาห์นี้)"; if (_selectedPeriod == 'Monthly') return "ยอดขายรายวัน (เดือนนี้)"; return "ยอดขายรายเดือน (ปีนี้)"; }
-  Widget _buildLineChart(Map<int, double> data) { double maxY = 0; if (data.isNotEmpty) maxY = data.values.reduce((curr, next) => curr > next ? curr : next); maxY = maxY == 0 ? 500 : maxY * 1.2; int maxX = (_selectedPeriod == 'Daily') ? 23 : (_selectedPeriod == 'Weekly') ? 7 : (_selectedPeriod == 'Monthly') ? 31 : 12; int startX = (_selectedPeriod == 'Daily') ? 0 : 1; List<FlSpot> spots = []; for (int i = startX; i <= maxX; i++) { spots.add(FlSpot(i.toDouble(), data[i] ?? 0)); } return LineChart(LineChartData(gridData: FlGridData(show: true, drawVerticalLine: false, horizontalInterval: maxY / 5, getDrawingHorizontalLine: (value) => FlLine(color: Colors.grey.shade200, strokeWidth: 1)), titlesData: FlTitlesData(show: true, rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)), bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 30, interval: _selectedPeriod == 'Yearly' ? 1 : (_selectedPeriod == 'Monthly' ? 5 : (_selectedPeriod == 'Daily' ? 4 : 1)), getTitlesWidget: (value, meta) { String text = ''; int v = value.toInt(); if (_selectedPeriod == 'Weekly') { const days = ['จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส', 'อา']; if (v >= 1 && v <= 7) text = days[v-1]; } else if (_selectedPeriod == 'Daily') { if (v % 4 == 0) text = '${v.toString().padLeft(2,'0')}:00'; } else if (_selectedPeriod == 'Yearly') { const months = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']; if (v >= 1 && v <= 12) text = months[v-1]; } else { if (v % 5 == 0 || v == 1) text = '$v'; } return SideTitleWidget(axisSide: meta.axisSide, child: Text(text, style: const TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold))); }))), borderData: FlBorderData(show: false), minX: startX.toDouble(), maxX: maxX.toDouble(), minY: 0, maxY: maxY, lineBarsData: [LineChartBarData(spots: spots, isCurved: true, color: const Color(0xFFA6C48A), barWidth: 4, isStrokeCapRound: true, dotData: const FlDotData(show: false), belowBarData: BarAreaData(show: true, color: const Color(0xFFA6C48A).withOpacity(0.2)))])); }
-  List<DocumentSnapshot> _filterDocsByPeriod(List<DocumentSnapshot> allDocs) { DateTime now = DateTime.now(); DateTime start; DateTime end; if (_selectedPeriod == 'Daily') { start = DateTime(now.year, now.month, now.day); end = DateTime(now.year, now.month, now.day, 23, 59, 59); } else if (_selectedPeriod == 'Weekly') { start = now.subtract(Duration(days: now.weekday - 1)); start = DateTime(start.year, start.month, start.day); end = start.add(const Duration(days: 7)).subtract(const Duration(seconds: 1)); } else if (_selectedPeriod == 'Monthly') { start = DateTime(now.year, now.month, 1); end = DateTime(now.year, now.month + 1, 1).subtract(const Duration(seconds: 1)); } else { start = DateTime(now.year, 1, 1); end = DateTime(now.year, 12, 31, 23, 59, 59); } return allDocs.where((doc) { Map<String, dynamic> data = doc.data() as Map<String, dynamic>; if (data['timestamp'] == null) return false; DateTime date = (data['timestamp'] as Timestamp).toDate(); return date.isAfter(start.subtract(const Duration(seconds: 1))) && date.isBefore(end.add(const Duration(seconds: 1))); }).toList(); }
-  Widget _buildPeriodTab(String period, String label) { bool isSelected = _selectedPeriod == period; return Expanded(child: GestureDetector(onTap: () => setState(() => _selectedPeriod = period), child: Container(padding: const EdgeInsets.symmetric(vertical: 10), decoration: BoxDecoration(color: isSelected ? const Color(0xFF6F4E37) : Colors.transparent, borderRadius: BorderRadius.circular(25)), child: Text(label, textAlign: TextAlign.center, style: TextStyle(color: isSelected ? Colors.white : Colors.grey, fontWeight: FontWeight.bold, fontSize: 16))))); }
+
+  String _getChartTitle() {
+    if (_selectedPeriod == 'Daily') return "ยอดขายรายชั่วโมง (วันนี้)";
+    if (_selectedPeriod == 'Weekly') return "ยอดขายรายวัน (สัปดาห์นี้)";
+    if (_selectedPeriod == 'Monthly') return "ยอดขายรายวัน (เดือนนี้)";
+    return "ยอดขายรายเดือน (ปีนี้)";
+  }
+
+  Widget _buildLineChart(Map<int, double> data) {
+    double maxY = 0;
+    if (data.isNotEmpty) maxY = data.values.reduce((curr, next) => curr > next ? curr : next);
+    maxY = maxY == 0 ? 500 : maxY * 1.2;
+
+    int maxX = (_selectedPeriod == 'Daily') ? 23 : (_selectedPeriod == 'Weekly') ? 7 : (_selectedPeriod == 'Monthly') ? 31 : 12;
+    int startX = (_selectedPeriod == 'Daily') ? 0 : 1;
+
+    List<FlSpot> spots = [];
+    for (int i = startX; i <= maxX; i++) {
+      spots.add(FlSpot(i.toDouble(), data[i] ?? 0));
+    }
+
+    return LineChart(
+      LineChartData(
+        gridData: FlGridData(show: true, drawVerticalLine: false, horizontalInterval: maxY / 5, getDrawingHorizontalLine: (value) => FlLine(color: Colors.grey.shade200, strokeWidth: 1)),
+        titlesData: FlTitlesData(
+          show: true,
+          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)), 
+          bottomTitles: AxisTitles(sideTitles: SideTitles(
+            showTitles: true,
+            reservedSize: 30,
+            interval: _selectedPeriod == 'Yearly' ? 1 : (_selectedPeriod == 'Monthly' ? 5 : (_selectedPeriod == 'Daily' ? 4 : 1)),
+            getTitlesWidget: (value, meta) {
+              String text = '';
+              int v = value.toInt();
+              if (_selectedPeriod == 'Weekly') {
+                const days = ['จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส', 'อา'];
+                if (v >= 1 && v <= 7) text = days[v-1];
+              } else if (_selectedPeriod == 'Daily') {
+                if (v % 4 == 0) text = '${v.toString().padLeft(2,'0')}:00';
+              } else if (_selectedPeriod == 'Yearly') {
+                const months = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+                if (v >= 1 && v <= 12) text = months[v-1];
+              } else {
+                if (v % 5 == 0 || v == 1) text = '$v';
+              }
+              return SideTitleWidget(axisSide: meta.axisSide, child: Text(text, style: const TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold)));
+            },
+          )),
+        ),
+        borderData: FlBorderData(show: false),
+        minX: startX.toDouble(), maxX: maxX.toDouble(), minY: 0, maxY: maxY,
+        lineBarsData: [
+          LineChartBarData(
+            spots: spots, isCurved: true, color: const Color(0xFFA6C48A), barWidth: 4, isStrokeCapRound: true, dotData: const FlDotData(show: false),
+            belowBarData: BarAreaData(show: true, color: const Color(0xFFA6C48A).withOpacity(0.2)),
+          ),
+        ],
+        lineTouchData: LineTouchData(touchTooltipData: LineTouchTooltipData(getTooltipItems: (List<LineBarSpot> touchedBarSpots) { return touchedBarSpots.map((barSpot) { return LineTooltipItem('฿${barSpot.y.toInt()}', const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)); }).toList(); })),
+      ),
+    );
+  }
+
+  List<DocumentSnapshot> _filterDocsByPeriod(List<DocumentSnapshot> allDocs) {
+    DateTime now = DateTime.now();
+    DateTime start;
+    if (_selectedPeriod == 'Daily') start = DateTime(now.year, now.month, now.day);
+    else if (_selectedPeriod == 'Weekly') start = now.subtract(Duration(days: now.weekday - 1));
+    else if (_selectedPeriod == 'Monthly') start = DateTime(now.year, now.month, 1);
+    else start = DateTime(now.year, 1, 1);
+    
+    DateTime end = DateTime(now.year, now.month, now.day, 23, 59, 59);
+    if (_selectedPeriod == 'Weekly') end = start.add(const Duration(days: 7)).subtract(const Duration(seconds: 1));
+    else if (_selectedPeriod == 'Monthly') end = DateTime(now.year, now.month + 1, 1).subtract(const Duration(seconds: 1));
+    else if (_selectedPeriod == 'Yearly') end = DateTime(now.year, 12, 31, 23, 59, 59);
+
+    return allDocs.where((doc) {
+      Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+      if (data['timestamp'] == null) return false;
+      DateTime date = (data['timestamp'] as Timestamp).toDate();
+      return date.isAfter(start.subtract(const Duration(seconds: 1))) && date.isBefore(end.add(const Duration(seconds: 1))); 
+    }).toList();
+  }
+
+  Widget _buildPeriodTab(String period, String label) {
+    bool isSelected = _selectedPeriod == period;
+    return Expanded(child: GestureDetector(onTap: () => setState(() => _selectedPeriod = period), child: Container(padding: const EdgeInsets.symmetric(vertical: 10), decoration: BoxDecoration(color: isSelected ? const Color(0xFF6F4E37) : Colors.transparent, borderRadius: BorderRadius.circular(25)), child: Text(label, textAlign: TextAlign.center, style: TextStyle(color: isSelected ? Colors.white : Colors.grey, fontWeight: FontWeight.bold, fontSize: 16)))));
+  }
   Widget _buildSummaryCard(String title, String value, IconData icon, Color color) { return Expanded(child: Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(15), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))]), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [Icon(icon, color: color, size: 18), const SizedBox(width: 5), Expanded(child: Text(title, style: const TextStyle(fontSize: 11, color: Colors.grey), overflow: TextOverflow.ellipsis))]), const SizedBox(height: 8), Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color))]))); }
   Widget _buildTopMenuCard(int index, String name, int count, double percent) { return Container(margin: const EdgeInsets.only(bottom: 10), padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 5)]), child: Column(children: [Row(children: [if (index == 0) const Text("🥇 ", style: TextStyle(fontSize: 20)), if (index == 1) const Text("🥈 ", style: TextStyle(fontSize: 20)), if (index == 2) const Text("🥉 ", style: TextStyle(fontSize: 20)), Expanded(child: Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))), Text("$count แก้ว", style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFA6C48A)))]), const SizedBox(height: 8), ClipRRect(borderRadius: BorderRadius.circular(4), child: LinearProgressIndicator(value: percent, backgroundColor: Colors.grey[100], color: const Color(0xFFA6C48A), minHeight: 8))])); }
 }
