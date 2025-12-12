@@ -20,13 +20,10 @@ class _StockScreenState extends State<StockScreen> {
     final unitCtrl = TextEditingController(text: isEditing ? data!['unit'] : '');
     final customCatCtrl = TextEditingController(); 
 
-    // --- 🔥 เพิ่มตัวแปรสำหรับต้นทุน ---
-    // ราคาซื้อ (เช่น 45 บาท)
+    // --- เพิ่มตัวแปรสำหรับต้นทุน ---
     final costCtrl = TextEditingController(text: isEditing && data!['purchasePrice'] != null ? data['purchasePrice'].toString() : '');
-    // ปริมาณที่ซื้อ (เช่น 1000 ml)
     final packSizeCtrl = TextEditingController(text: isEditing && data!['packSize'] != null ? data['packSize'].toString() : '');
 
-    // หมวดหมู่ที่มีอยู่แล้ว (Hardcode ไว้เป็นตัวเลือกพื้นฐาน + เดี๋ยวจะดึงเพิ่มจาก DB ถ้าทำได้ แต่แค่นี้ก็พอสำหรับ Dialog)
     List<String> baseCategories = ["ผง", "น้ำตาล", "นม", "ไซรัป", "เมล็ดกาแฟ", "แก้ว/ฝา", "อื่นๆ"];
     
     String selectedCat = isEditing ? (data!['category'] ?? 'อื่นๆ') : 'ผง';
@@ -42,9 +39,11 @@ class _StockScreenState extends State<StockScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setState) {
+          // คำนวณต้นทุนต่อหน่วยแบบ Real-time
           double price = double.tryParse(costCtrl.text) ?? 0;
-                  double size = double.tryParse(packSizeCtrl.text) ?? 0;
-                  double costPerUnit = (size > 0) ? price / size : 0;
+          double size = double.tryParse(packSizeCtrl.text) ?? 0;
+          double costPerUnit = (size > 0) ? price / size : 0;
+
           return AlertDialog(
             title: Text(isEditing ? "แก้ไขวัตถุดิบ" : "เพิ่มวัตถุดิบใหม่"),
             content: SingleChildScrollView(
@@ -80,9 +79,22 @@ class _StockScreenState extends State<StockScreen> {
 
                   const SizedBox(height: 15),
                   const Divider(),
+                  const Text("ข้อมูลสต๊อก", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
+
+                  // ช่องกรอกจำนวนคงเหลือ
+                  Row(
+                    children: [
+                      Expanded(flex: 2, child: TextField(controller: stockCtrl, decoration: const InputDecoration(labelText: "คงเหลือ", prefixIcon: Icon(Icons.numbers)), keyboardType: const TextInputType.numberWithOptions(decimal: true))),
+                      const SizedBox(width: 10),
+                      Expanded(flex: 1, child: TextField(controller: unitCtrl, decoration: const InputDecoration(labelText: "หน่วย", hintText: "g, ml"))),
+                    ],
+                  ),
+
+                  const SizedBox(height: 15),
+                  const Divider(),
                   const Text("ตั้งค่าต้นทุน (สำหรับคำนวณ GP)", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
                   
-                  // --- 🔥 ช่องกรอกต้นทุน ---
+                  // ช่องกรอกต้นทุน
                   Row(
                     children: [
                       Expanded(child: TextField(controller: costCtrl, decoration: const InputDecoration(labelText: "ราคาซื้อ (บาท)", prefixIcon: Icon(Icons.attach_money)), keyboardType: TextInputType.number, onChanged: (v)=>setState((){}))),
@@ -91,7 +103,6 @@ class _StockScreenState extends State<StockScreen> {
                     ],
                   ),
                   const SizedBox(height: 5),
-                  // แสดงผลคำนวณ
                   
                   if (price > 0 && size > 0)
                     Text("ตกเฉลี่ย: ${costPerUnit.toStringAsFixed(4)} บาท / ${unitCtrl.text.isEmpty ? 'หน่วย' : unitCtrl.text}", style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 12)),
@@ -129,11 +140,10 @@ class _StockScreenState extends State<StockScreen> {
                       'category': finalCategory,
                       'currentStock': double.tryParse(stockCtrl.text) ?? 0,
                       'unit': unitCtrl.text.trim(),
-                      'minThreshold': 200, 
-                      // บันทึกข้อมูลต้นทุน
+                      'minThreshold': 5, // ปรับค่า Default แจ้งเตือนขั้นต่ำ
                       'purchasePrice': pPrice,
                       'packSize': pSize,
-                      'costPerUnit': costPerUnit, // ค่านี้จะเอาไปใช้คิด GP
+                      'costPerUnit': costPerUnit,
                     };
 
                     if (isEditing) {
@@ -159,6 +169,50 @@ class _StockScreenState extends State<StockScreen> {
     });
   }
 
+  // --- 🔥 ฟังก์ชันใหม่: Dialog กรอกจำนวนเพื่อปรับสต๊อก (Quick Add) ---
+  void _showQuickAddDialog(BuildContext context, String id, String name, double currentStock, String unit) {
+    final amountCtrl = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text("ปรับสต๊อก: $name"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+             Text("คงเหลือปัจจุบัน: $currentStock $unit", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
+             const SizedBox(height: 15),
+             TextField(
+               controller: amountCtrl,
+               keyboardType: const TextInputType.numberWithOptions(decimal: true),
+               autofocus: true,
+               decoration: InputDecoration(
+                 labelText: "จำนวนที่ต้องการเพิ่ม (+)",
+                 hintText: "เช่น 100",
+                 helperText: "ใส่เครื่องหมายลบ (-) หากต้องการลด เช่น -50",
+                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                 prefixIcon: const Icon(Icons.exposure),
+               ),
+             ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("ยกเลิก")),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFA6C48A), foregroundColor: Colors.white),
+            onPressed: () {
+               double val = double.tryParse(amountCtrl.text) ?? 0;
+               if (val != 0) {
+                 _updateStock(id, currentStock, val);
+                 Navigator.pop(ctx);
+               }
+            }, 
+            child: const Text("ยืนยัน")
+          )
+        ],
+      )
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -169,7 +223,6 @@ class _StockScreenState extends State<StockScreen> {
         foregroundColor: Colors.white,
         elevation: 0,
       ),
-      // --- 🔥 ย้าย StreamBuilder มาครอบทั้งหน้า เพื่อดึงข้อมูลมาทำหมวดหมู่ ---
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance.collection('ingredients').orderBy('name').snapshots(),
         builder: (context, snapshot) {
@@ -178,8 +231,8 @@ class _StockScreenState extends State<StockScreen> {
 
           var docs = snapshot.data!.docs;
 
-          // --- 1. สกัดหมวดหมู่ทั้งหมดที่มีอยู่จริงใน DB ---
-          Set<String> categorySet = {"ทั้งหมด"}; // เริ่มต้นด้วย 'ทั้งหมด' เสมอ
+          // 1. สกัดหมวดหมู่
+          Set<String> categorySet = {"ทั้งหมด"}; 
           for (var doc in docs) {
             var data = doc.data() as Map<String, dynamic>;
             if (data['category'] != null && data['category'].toString().isNotEmpty) {
@@ -188,7 +241,7 @@ class _StockScreenState extends State<StockScreen> {
           }
           List<String> dynamicCategories = categorySet.toList();
 
-          // --- 2. กรองข้อมูลตามหมวดที่เลือก ---
+          // 2. กรองข้อมูล
           var filteredDocs = docs;
           if (_selectedFilter != "ทั้งหมด") {
             filteredDocs = docs.where((doc) {
@@ -199,7 +252,7 @@ class _StockScreenState extends State<StockScreen> {
 
           return Column(
             children: [
-              // --- แถบหมวดหมู่ (สร้างจาก dynamicCategories) ---
+              // Filter Bar
               Container(
                 height: 60,
                 padding: const EdgeInsets.symmetric(vertical: 10),
@@ -238,7 +291,7 @@ class _StockScreenState extends State<StockScreen> {
                 ),
               ),
 
-              // --- รายการวัตถุดิบ (Filtered) ---
+              // Stock List
               Expanded(
                 child: filteredDocs.isEmpty
                     ? Center(
@@ -270,6 +323,7 @@ class _StockScreenState extends State<StockScreen> {
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                             child: InkWell(
                               borderRadius: BorderRadius.circular(12),
+                              // กดเพื่อแก้ไขข้อมูลหลัก
                               onTap: () => _showManageIngredientDialog(context, id: id, data: data),
                               child: Padding(
                                 padding: const EdgeInsets.all(12.0),
@@ -308,10 +362,20 @@ class _StockScreenState extends State<StockScreen> {
                                         ],
                                       ),
                                     ),
+                                    
+                                    // --- 🔥 ปุ่มจัดการสต๊อก (+/- และ กรอกเอง) ---
                                     Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
                                         IconButton(icon: const Icon(Icons.remove_circle_outline, color: Colors.red), onPressed: () => _updateStock(id, stock, -1)),
+                                        
+                                        // 🔥 ปุ่มกรอกจำนวน (Quick Add)
+                                        IconButton(
+                                          icon: const Icon(Icons.edit_square, color: Colors.blue),
+                                          tooltip: "กรอกจำนวน",
+                                          onPressed: () => _showQuickAddDialog(context, id, name, stock, unit),
+                                        ),
+                                        
                                         IconButton(icon: const Icon(Icons.add_circle, color: Colors.green), onPressed: () => _updateStock(id, stock, 1)),
                                       ],
                                     ),
