@@ -6,6 +6,8 @@ import '../../models/model_menu.dart';
 import '../../providers/cart_provider.dart';
 import 'checkout_screen.dart';
 import 'customer_tracking_screen.dart';
+// --- 🔥 เพิ่ม Import หน้าต่างเลือกตัวเลือก ---
+import '../common/product_customize_dialog.dart';
 
 class MenuScreen extends StatefulWidget {
   final String tableNumber; 
@@ -19,6 +21,27 @@ class MenuScreen extends StatefulWidget {
 class _MenuScreenState extends State<MenuScreen> {
   final List<String> _categories = ["กาแฟ", "ชา", "นมสด", "ผลไม้"];
   int _selectedIndex = 0;
+
+  // --- 🔥 ฟังก์ชันเปิดหน้าต่างเลือกตัวเลือก (เหมือน Admin) ---
+  void _openCustomizeDialog(MenuItem menu) {
+    showDialog(
+      context: context,
+      builder: (context) => ProductCustomizeDialog(
+        menu: menu,
+        onConfirm: (sweetness, milk) {
+          // เพิ่มลงตะกร้าพร้อมตัวเลือก
+          Provider.of<CartProvider>(context, listen: false).addItem(menu, sweetness: sweetness, milk: milk);
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text("เพิ่ม ${menu.name} ($sweetness, $milk) แล้ว"), 
+              duration: const Duration(milliseconds: 800)
+            )
+          );
+        },
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -61,6 +84,7 @@ class _MenuScreenState extends State<MenuScreen> {
       ),
       body: Column(
         children: [
+          // Category Bar
           Container(
             height: 60,
             padding: const EdgeInsets.symmetric(vertical: 10),
@@ -83,6 +107,7 @@ class _MenuScreenState extends State<MenuScreen> {
             ),
           ),
 
+          // Menu Grid
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance.collection('menu_items').snapshots(),
@@ -119,7 +144,6 @@ class _MenuScreenState extends State<MenuScreen> {
                     category: data['category'] ?? 'อื่นๆ',
                     imageUrl: data['imageUrl'] ?? '',
                     recipe: recipeList,
-                    // --- 🔥 เพิ่ม: ดึงสถานะของหมด (Default = true) ---
                     isAvailable: data['isAvailable'] ?? true, 
                   );
                 }).toList();
@@ -148,72 +172,65 @@ class _MenuScreenState extends State<MenuScreen> {
     Navigator.push(context, MaterialPageRoute(builder: (context) => CheckoutScreen(tableNumber: widget.tableNumber, isCustomer: true)));
   }
 
-  // --- 🔥 ฟังก์ชันการ์ดสินค้า (ปรับปรุง UI) ---
   Widget _buildMenuCard(BuildContext context, MenuItem menu) {
-    return Container(
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)]),
-      child: Padding(
-        padding: const EdgeInsets.all(12.0),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Expanded(
-            child: Stack(
-              children: [
-                Container(
-                  width: double.infinity,
-                  decoration: BoxDecoration(color: Colors.brown[50], borderRadius: BorderRadius.circular(12)),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: menu.imageUrl.isNotEmpty
-                        // --- ถ้าของหมด ปรับภาพเป็นขาวดำ/จางลง ---
-                        ? ColorFiltered(
-                            colorFilter: menu.isAvailable 
+    // --- 🔥 ใช้ GestureDetector ครอบเพื่อกดที่การ์ดแล้วเด้ง Popup ---
+    return GestureDetector(
+      onTap: menu.isAvailable ? () => _openCustomizeDialog(menu) : null,
+      child: Container(
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)]),
+        child: Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Expanded(
+              child: Stack(
+                children: [
+                  Container(
+                    width: double.infinity,
+                    decoration: BoxDecoration(color: Colors.brown[50], borderRadius: BorderRadius.circular(12)),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: menu.imageUrl.isNotEmpty
+                          ? ColorFiltered(
+                              colorFilter: menu.isAvailable 
                                 ? const ColorFilter.mode(Colors.transparent, BlendMode.multiply) 
                                 : const ColorFilter.mode(Colors.grey, BlendMode.saturation),
-                            child: Image.network(
-                                menu.imageUrl,
-                                fit: BoxFit.cover,
-                                errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image, color: Colors.grey),
-                              )
-                          )
-                        : const Icon(Icons.coffee, size: 50, color: Colors.brown),
-                  ),
-                ),
-                
-                // --- ป้าย SOLD OUT ---
-                if (!menu.isAvailable)
-                  Container(
-                    decoration: BoxDecoration(color: Colors.black.withOpacity(0.6), borderRadius: BorderRadius.circular(12)),
-                    child: const Center(
-                      child: Text("SOLD OUT", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                              child: Image.network(
+                                  menu.imageUrl,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image, color: Colors.grey),
+                                )
+                            )
+                          : const Icon(Icons.coffee, size: 50, color: Colors.brown),
                     ),
                   ),
-              ],
+                  
+                  if (!menu.isAvailable)
+                    Container(
+                      decoration: BoxDecoration(color: Colors.black.withOpacity(0.6), borderRadius: BorderRadius.circular(12)),
+                      child: const Center(
+                        child: Text("SOLD OUT", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                      ),
+                    ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(height: 10),
-          
-          Text(menu.name, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: menu.isAvailable ? Colors.black : Colors.grey), maxLines: 1),
-          
-          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            Text("฿${menu.price.toStringAsFixed(0)}", style: const TextStyle(color: Colors.grey)),
+            const SizedBox(height: 10),
             
-            // --- ถ้ามีของ -> ปุ่มบวก, ถ้าหมด -> ข้อความ ---
-            if (menu.isAvailable)
-              InkWell(
-                onTap: () { 
-                  Provider.of<CartProvider>(context, listen: false).addItem(menu); 
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("เพิ่ม ${menu.name} แล้ว"), duration: const Duration(milliseconds: 500))); 
-                }, 
-                child: Container(
-                  padding: const EdgeInsets.all(6), 
-                  decoration: const BoxDecoration(color: Color(0xFFA6C48A), shape: BoxShape.circle), 
-                  child: const Icon(Icons.add, color: Colors.white, size: 20)
+            Text(menu.name, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: menu.isAvailable ? Colors.black : Colors.grey), maxLines: 1),
+            
+            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+              Text("฿${menu.price.toStringAsFixed(0)}", style: const TextStyle(color: Colors.grey)),
+              
+              if (menu.isAvailable)
+                InkWell(
+                  onTap: () => _openCustomizeDialog(menu), // กดบวกก็เปิด Popup เหมือนกัน
+                  child: Container(padding: const EdgeInsets.all(6), decoration: const BoxDecoration(color: Color(0xFFA6C48A), shape: BoxShape.circle), child: const Icon(Icons.add, color: Colors.white, size: 20))
                 )
-              )
-            else
-              const Text("", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 12))
-          ])
-        ]),
+              else
+                const Text("ของหมด", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 12))
+            ])
+          ]),
+        ),
       ),
     );
   }

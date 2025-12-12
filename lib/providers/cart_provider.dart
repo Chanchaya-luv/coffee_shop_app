@@ -4,26 +4,32 @@ import '../models/model_menu.dart';
 class CartItem {
   final MenuItem menu;
   int quantity;
+  final String sweetness; 
+  final String milk;      
 
-  CartItem({required this.menu, this.quantity = 1});
+  CartItem({
+    required this.menu,
+    this.quantity = 1,
+    this.sweetness = 'ปกติ (100%)',
+    this.milk = 'นมวัว',            
+  });
+
+  // Key สำหรับระบุตัวตนสินค้า (รวม Option)
+  String get key => "${menu.id}_${sweetness}_$milk";
 }
 
 class CartProvider with ChangeNotifier {
   final Map<String, CartItem> _items = {};
-
-  // --- 🔥 เพิ่มตัวแปรเก็บเลข Order ล่าสุด ---
   String? _activeOrderId; 
 
   Map<String, CartItem> get items => _items;
-  
-  int get itemCount => _items.length; // นับจำนวนรายการ (เช่น 2 เมนู)
+  String? get activeOrderId => _activeOrderId;
 
-  // หรือถ้านับจำนวนแก้วรวม
+  int get itemCount => _items.length; 
+
   int get totalItemsCount {
     int count = 0;
-    _items.forEach((key, item) {
-      count += item.quantity;
-    });
+    _items.forEach((key, item) => count += item.quantity);
     return count;
   }
 
@@ -35,71 +41,64 @@ class CartProvider with ChangeNotifier {
     return total;
   }
 
-  // --- 🔥 Getter & Setter สำหรับ Order ID ---
-  String? get activeOrderId => _activeOrderId;
-
   void setActiveOrder(String orderId) {
     _activeOrderId = orderId;
-    notifyListeners(); // แจ้งเตือนหน้าจอให้แสดงปุ่มติดตาม
+    notifyListeners();
   }
 
-  // --- ฟังก์ชันเดิม ---
-  void addItem(MenuItem menu) {
-    if (_items.containsKey(menu.id)) {
-      _items.update(
-        menu.id,
-        (existing) => CartItem(
-          menu: existing.menu,
-          quantity: existing.quantity + 1,
-        ),
-      );
+  // เพิ่มสินค้า (จากหน้าเมนู)
+  void addItem(MenuItem menu, {String sweetness = 'ปกติ (100%)', String milk = 'นมวัว'}) {
+    String itemKey = "${menu.id}_${sweetness}_$milk";
+    if (_items.containsKey(itemKey)) {
+      _items[itemKey]!.quantity += 1;
     } else {
-      _items.putIfAbsent(
-        menu.id,
-        () => CartItem(menu: menu),
+      _items[itemKey] = CartItem(
+        menu: menu, 
+        quantity: 1,
+        sweetness: sweetness,
+        milk: milk,
       );
     }
     notifyListeners();
   }
 
-  void removeSingleItem(String menuId) {
-    if (!_items.containsKey(menuId)) return;
-    if (_items[menuId]!.quantity > 1) {
-      _items.update(
-        menuId,
-        (existing) => CartItem(
-          menu: existing.menu,
-          quantity: existing.quantity - 1,
-        ),
-      );
+  // --- 🔥 ฟังก์ชันใหม่: เพิ่มจำนวน (ปุ่ม + ใน Checkout) ---
+  void addQuantity(String itemKey) {
+    if (_items.containsKey(itemKey)) {
+      _items[itemKey]!.quantity += 1;
+      notifyListeners();
+    }
+  }
+
+  // --- 🔥 ฟังก์ชันใหม่: ลดจำนวน (ปุ่ม - ใน Checkout) ---
+  void removeSingleItem(String itemKey) {
+    if (!_items.containsKey(itemKey)) return;
+    
+    if (_items[itemKey]!.quantity > 1) {
+      _items[itemKey]!.quantity -= 1;
     } else {
-      _items.remove(menuId);
+      _items.remove(itemKey); // ถ้าเหลือ 1 ให้ลบออก
     }
     notifyListeners();
+  }
+
+  // --- 🔥 ฟังก์ชันใหม่: ลบทิ้งทันที (ปุ่มถังขยะ) ---
+  void removeItem(String itemKey) {
+    if (_items.containsKey(itemKey)) {
+      _items.remove(itemKey);
+      notifyListeners();
+    }
   }
   
   int getQuantity(String menuId) {
-    return _items.containsKey(menuId) ? _items[menuId]!.quantity : 0;
-  }
-  
-  void updateQuantity(MenuItem menu, int change) {
-    if (_items.containsKey(menu.id)) {
-      int newQuantity = _items[menu.id]!.quantity + change;
-      if (newQuantity > 0) {
-        _items.update(
-          menu.id,
-          (existing) => CartItem(menu: existing.menu, quantity: newQuantity),
-        );
-      } else {
-        _items.remove(menu.id);
+    // ฟังก์ชันนี้ใช้นับรวมทุก Option ของเมนู ID เดียวกัน
+    int total = 0;
+    _items.forEach((key, item) {
+      if (item.menu.id == menuId) {
+        total += item.quantity;
       }
-    } else if (change > 0) {
-      _items.putIfAbsent(
-        menu.id,
-        () => CartItem(menu: menu, quantity: 1),
-      );
-    }
-    notifyListeners();
+    });
+    return total;
   }
 
   void clearCart() {

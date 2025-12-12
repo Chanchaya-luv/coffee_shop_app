@@ -6,6 +6,8 @@ import '../../models/model_menu.dart';
 import '../../providers/cart_provider.dart';
 import 'checkout_screen.dart'; 
 import '../../screens/admin/add_menu_screen.dart';
+// 🔥 Import หน้าต่างเลือก Option
+import '../common/product_customize_dialog.dart';
 
 class QuickMenuScreen extends StatefulWidget {
   const QuickMenuScreen({super.key});
@@ -18,6 +20,19 @@ class _QuickMenuScreenState extends State<QuickMenuScreen> {
   final List<String> _categories = ["กาแฟ", "ชา", "นมสด", "ผลไม้"];
   int _selectedIndex = 0;
 
+  void _openCustomizeDialog(MenuItem menu) {
+    showDialog(
+      context: context,
+      builder: (context) => ProductCustomizeDialog(
+        menu: menu,
+        onConfirm: (sweetness, milk) {
+          Provider.of<CartProvider>(context, listen: false).addItem(menu, sweetness: sweetness, milk: milk);
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("เพิ่ม ${menu.name} ($sweetness, $milk) แล้ว"), duration: const Duration(milliseconds: 800)));
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -26,7 +41,7 @@ class _QuickMenuScreenState extends State<QuickMenuScreen> {
         backgroundColor: const Color(0xFF6F4E37),
         foregroundColor: Colors.white,
         centerTitle: true,
-        title: const Text("Quick Menu", style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text("Quick Menu (Admin)", style: TextStyle(fontWeight: FontWeight.bold)),
         actions: [
           IconButton(
             icon: const Icon(Icons.delete_sweep),
@@ -103,15 +118,12 @@ class _QuickMenuScreenState extends State<QuickMenuScreen> {
 
                 final menus = filteredDocs.map((doc) {
                   Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-                  
-                  // ดึง Recipe
                   List<RecipeItem> recipeList = [];
                   if (data['recipe'] != null && data['recipe'] is List) {
                     for (var item in data['recipe']) {
                       if (item is Map) recipeList.add(RecipeItem.fromMap(Map<String, dynamic>.from(item)));
                     }
                   }
-
                   return MenuItem(
                     id: doc.id,
                     name: data['name'] ?? 'ไม่ระบุชื่อ', 
@@ -119,7 +131,6 @@ class _QuickMenuScreenState extends State<QuickMenuScreen> {
                     category: data['category'] ?? 'อื่นๆ',
                     imageUrl: data['imageUrl'] ?? '',
                     recipe: recipeList,
-                    // --- 🔥 ดึงสถานะ isAvailable มาด้วย (ถ้าไม่มีให้เป็น true) ---
                     isAvailable: data['isAvailable'] ?? true, 
                   );
                 }).toList();
@@ -145,94 +156,83 @@ class _QuickMenuScreenState extends State<QuickMenuScreen> {
     );
   }
 
-  // --- 🔥 ฟังก์ชันการ์ดสินค้าที่ปรับปรุงแล้ว ---
   Widget _buildProductCard(BuildContext context, MenuItem menu) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(12.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // รูปภาพขยายเต็มพื้นที่
-            Expanded(
-              child: Stack(
-                children: [
-                  Container(
-                    width: double.infinity,
-                    decoration: BoxDecoration(color: Colors.brown[50], borderRadius: BorderRadius.circular(12)),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: menu.imageUrl.isNotEmpty
-                          // --- 🔥 ถ้าของหมด ให้รูปเป็นขาวดำ/จางลง ---
-                          ? ColorFiltered(
-                              colorFilter: menu.isAvailable 
-                                ? const ColorFilter.mode(Colors.transparent, BlendMode.multiply) 
-                                : const ColorFilter.mode(Colors.grey, BlendMode.saturation),
-                              child: Image.network(
-                                  menu.imageUrl,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image, color: Colors.grey),
-                                )
-                            )
-                          : const Icon(Icons.coffee, size: 50, color: Colors.brown),
-                    ),
-                  ),
-
-                  // --- 🔥 ป้าย SOLD OUT ทับรูป ---
-                  if (!menu.isAvailable)
+    return GestureDetector(
+      // --- 🔥 กดที่การ์ดเพื่อเลือก Option ---
+      onTap: menu.isAvailable ? () => _openCustomizeDialog(menu) : null,
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Stack(
+                  children: [
                     Container(
-                      decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.6),
+                      width: double.infinity,
+                      decoration: BoxDecoration(color: Colors.brown[50], borderRadius: BorderRadius.circular(12)),
+                      child: ClipRRect(
                         borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Center(
-                        child: Text("SOLD OUT", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                        child: menu.imageUrl.isNotEmpty
+                            ? ColorFiltered(
+                                colorFilter: menu.isAvailable 
+                                  ? const ColorFilter.mode(Colors.transparent, BlendMode.multiply) 
+                                  : const ColorFilter.mode(Colors.grey, BlendMode.saturation),
+                                child: Image.network(
+                                    menu.imageUrl,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image, color: Colors.grey),
+                                  )
+                              )
+                            : const Icon(Icons.coffee, size: 50, color: Colors.brown),
                       ),
                     ),
+                    if (!menu.isAvailable)
+                      Container(
+                        decoration: BoxDecoration(color: Colors.black.withOpacity(0.6), borderRadius: BorderRadius.circular(12)),
+                        child: const Center(
+                          child: Text("SOLD OUT", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+              
+              Text(
+                menu.name,
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: menu.isAvailable ? Colors.black : Colors.grey),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text("฿${menu.price.toStringAsFixed(0)}", style: const TextStyle(color: Colors.grey)),
+                  
+                  // --- ปุ่มบวก (Add) ---
+                  if (menu.isAvailable)
+                    InkWell(
+                      onTap: () => _openCustomizeDialog(menu), // กดบวกก็เปิด Option เหมือนกัน
+                      child: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: const BoxDecoration(color: Color(0xFFA6C48A), shape: BoxShape.circle),
+                        child: const Icon(Icons.add, color: Colors.white, size: 20),
+                      ),
+                    )
+                  else
+                     const Text("ของหมด", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 12)),
                 ],
               ),
-            ),
-            const SizedBox(height: 10),
-            
-            // ชื่อเมนู (ถ้าหมดให้สีจางลง)
-            Text(
-              menu.name,
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: menu.isAvailable ? Colors.black : Colors.grey),
-              maxLines: 1,
-            ),
-            
-            // แถวราคาและปุ่ม
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text("฿${menu.price.toStringAsFixed(0)}", style: const TextStyle(color: Colors.grey)),
-                
-                // --- 🔥 ถ้ามีของ -> โชว์ปุ่มบวก/ลบ, ถ้าหมด -> โชว์คำว่า "ของหมด" ---
-                if (menu.isAvailable)
-                  Consumer<CartProvider>(
-                    builder: (ctx, cart, child) {
-                      int qty = cart.getQuantity(menu.id);
-                      return Row(
-                        children: [
-                          InkWell(onTap: () => cart.updateQuantity(menu, -1), child: const Icon(Icons.remove_circle_outline, color: Colors.grey)),
-                          const SizedBox(width: 8), 
-                          Text("$qty", style: const TextStyle(fontWeight: FontWeight.bold)),
-                          const SizedBox(width: 8), 
-                          InkWell(onTap: () => cart.updateQuantity(menu, 1), child: const Icon(Icons.add_circle, color: Color(0xFFA6C48A))),
-                        ],
-                      );
-                    },
-                  )
-                else
-                   const Text("", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 12)),
-              ],
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -258,11 +258,7 @@ class _QuickMenuScreenState extends State<QuickMenuScreen> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
               onPressed: () {
-                Navigator.push(context, MaterialPageRoute(builder: (context) => CheckoutScreen(
-  tableNumber: 'TA-001',
-  isCustomer: true,   // หรือ false ตามที่ต้องการ
-)
-));
+                Navigator.push(context, MaterialPageRoute(builder: (context) => CheckoutScreen(tableNumber: 'TA-001', isCustomer: false)));
               },
               child: Text("Checkout ฿${cart.totalAmount.toStringAsFixed(0)}", style: const TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold)),
             ),
