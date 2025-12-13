@@ -1,4 +1,3 @@
-import 'package:coffee_shop_app/screens/setting/help_center_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -17,8 +16,7 @@ import 'manage_accounts_screen.dart';
 import 'edit_profile_screen.dart';
 import 'store_profile_screen.dart';
 import 'generic_settings_screen.dart';
-
-// --- 🔥 เพิ่ม Import หน้าจัดการโปรโมชั่น ---
+import 'help_center_screen.dart';
 import '../admin/promotion_management_screen.dart';
 
 class SettingScreen extends StatefulWidget {
@@ -82,13 +80,7 @@ class _SettingScreenState extends State<SettingScreen> {
     Navigator.push(context, MaterialPageRoute(builder: (context) => page));
   }
 
-  void _navigateRestricted(BuildContext context, Widget page) {
-    if (_canEdit) {
-      Navigator.push(context, MaterialPageRoute(builder: (context) => page));
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("⛔️ ไม่มีสิทธิ์เข้าถึง (สำหรับผู้จัดการ/เจ้าของร้านเท่านั้น)"), backgroundColor: Colors.red));
-    }
-  }
+  // ไม่ต้องใช้ _navigateRestricted แล้ว เพราะเราจะให้เข้าได้ทุกคน แต่ส่ง isReadOnly ไปแทน
 
   @override
   Widget build(BuildContext context) {
@@ -126,9 +118,7 @@ class _SettingScreenState extends State<SettingScreen> {
                       String name = "ผู้ใช้งาน"; String role = "staff"; String photoUrl = "";
                       if (snapshot.hasData && snapshot.data!.exists) {
                         var data = snapshot.data!.data() as Map<String, dynamic>;
-                        name = data['name'] ?? name;
-                        role = data['role'] ?? role;
-                        photoUrl = data['photoUrl'] ?? "";
+                        name = data['name'] ?? name; role = data['role'] ?? role; photoUrl = data['photoUrl'] ?? "";
                       }
                       String roleDisplay = "พนักงานทั่วไป";
                       if (role == 'manager') roleDisplay = "ผู้จัดการ";
@@ -136,9 +126,7 @@ class _SettingScreenState extends State<SettingScreen> {
                       if (role == 'admin') roleDisplay = "ผู้ดูแลระบบ";
 
                       return Card(
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                        elevation: 2,
-                        margin: const EdgeInsets.only(bottom: 20),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), elevation: 2, margin: const EdgeInsets.only(bottom: 20),
                         child: ListTile(
                           contentPadding: const EdgeInsets.all(16),
                           leading: CircleAvatar(radius: 30, backgroundImage: photoUrl.isNotEmpty ? NetworkImage(photoUrl) : null, child: photoUrl.isEmpty ? const Icon(Icons.person, size: 30) : null),
@@ -151,60 +139,47 @@ class _SettingScreenState extends State<SettingScreen> {
                     }
                   ),
 
-                  // --- 1. การตั้งค่าทั่วไป ---
+                  // Group 1: การตั้งค่าทั่วไป
                   _buildSettingsGroup(
                     title: "การตั้งค่าทั่วไป",
                     children: [
                       // --- 🔥 ส่งค่า isReadOnly: !_canEdit ไปบอกหน้าลูก ---
                       _buildSettingItem(
                         Icons.store, "ข้อมูลร้านค้า", 
-                        onTap: () => _navigateRestricted(context, const StoreProfileScreen())
+                        onTap: () => _navigate(context, StoreProfileScreen(isReadOnly: !_canEdit))
                       ),
                       
                       _buildSettingItem(
                         Icons.store_mall_directory, "จัดการสาขา", 
-                        onTap: () => _navigateRestricted(context, const BranchManagementScreen())
+                        onTap: () => _navigate(context, BranchManagementScreen(isReadOnly: !_canEdit))
                       ),
                       
                       _buildSettingItem(Icons.history, "ประวัติออเดอร์", onTap: () => _navigate(context, const OrderHistoryScreen())),
                       
                       _buildSettingItem(
                         Icons.payment, "การตั้งค่าการชำระเงิน", 
-                        onTap: () => _navigateRestricted(context, const PaymentSettingsScreen())
+                        onTap: () => _navigate(context, PaymentSettingsScreen(isReadOnly: !_canEdit))
                       ),
                       
                       _buildSettingItem(Icons.notifications_active_outlined, "การแจ้งเตือน", onTap: () => _navigate(context, const NotificationScreen())),
-                      
-                      _buildSettingItem(
-                        Icons.help_outline, 
-                        "ศูนย์ช่วยเหลือ", 
-                        showDivider: false, // ปิดเส้นขีดล่างเพราะเป็นอันสุดท้าย
-                        onTap: () => _navigate(context, const HelpCenterScreen()))
+                      _buildSettingItem(Icons.help_outline, "ศูนย์ช่วยเหลือ / คู่มือ", showDivider: false, onTap: () => _navigate(context, const HelpCenterScreen())),
                     ],
                   ),
                   const SizedBox(height: 20),
 
-                  // --- 2. สต็อก & เมนู ---
+                  // Group 2: สต็อก & เมนู
                   _buildSettingsGroup(
                     title: "สต็อก & เมนู",
                     children: [
                       _buildSettingItem(Icons.inventory_2_outlined, "การจัดการวัตถุดิบ", onTap: () => _navigate(context, const StockScreen())),
                       _buildSettingItem(Icons.restaurant_menu, "การจัดการเมนู", onTap: () => _navigate(context, const ManageMenuScreen())),
-                      
-                      // --- 🔥 เพิ่มปุ่มจัดการโปรโมชั่น ---
-                      _buildSettingItem(
-                        Icons.local_offer, 
-                        "จัดการโปรโมชั่น", 
-                        onTap: () => _navigate(context, const PromotionManagementScreen())
-                      ),
-
+                      _buildSettingItem(Icons.local_offer, "จัดการโปรโมชั่น", onTap: () => _navigate(context, const PromotionManagementScreen())),
                       _buildSettingItem(Icons.bar_chart, "การคำนวณ GP", showDivider: false, onTap: () => _navigate(context, const GPCalculatorScreen())),
-                      
                     ],
                   ),
                   const SizedBox(height: 20),
 
-                  // --- 3. ความปลอดภัย ---
+                  // Group 3: บัญชีและความปลอดภัย
                   _buildSettingsGroup(
                     title: "บัญชีและความปลอดภัย",
                     children: [
@@ -223,8 +198,7 @@ class _SettingScreenState extends State<SettingScreen> {
                   const SizedBox(height: 40),
 
                   SizedBox(
-                    width: double.infinity,
-                    height: 50,
+                    width: double.infinity, height: 50,
                     child: OutlinedButton.icon(
                       style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.red), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
                       onPressed: () => _confirmSignOut(context),
@@ -242,19 +216,9 @@ class _SettingScreenState extends State<SettingScreen> {
     );
   }
 
-  Widget _buildSettingsGroup({required String title, required List<Widget> children}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(padding: const EdgeInsets.only(left: 10, bottom: 8), child: Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF5D4037)))),
-        Container(
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 2))]),
-          child: Column(children: children),
-        ),
-      ],
-    );
-  }
-
+  Widget _buildSettingsGroup({required String title, required List<Widget> children}) { return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Padding(padding: const EdgeInsets.only(left: 10, bottom: 8), child: Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF5D4037)))), Container(decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 2))]), child: Column(children: children))]); }
+  
+  // ปรับ Widget ให้แสดงไอคอนปกติ แต่ถ้าไม่มีสิทธิ์อาจจะเปลี่ยนสีเล็กน้อย (แต่ในที่นี้เราให้เข้าได้ เลยใช้สีปกติ)
   Widget _buildSettingItem(IconData icon, String title, {bool showDivider = true, required VoidCallback onTap, bool isRestricted = false}) {
     return Column(
       children: [
