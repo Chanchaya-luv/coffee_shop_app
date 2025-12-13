@@ -19,9 +19,8 @@ class OrderService {
       
       // วนลูป CartItem เพื่อหาสูตร
       for (var cartItem in cartItems) {
-        var item = cartItem.menu;
-        if (item.recipe.isNotEmpty) {
-          for (var recipeItem in item.recipe) {
+        if (cartItem.menu.recipe.isNotEmpty) {
+          for (var recipeItem in cartItem.menu.recipe) {
             if (recipeItem.ingredientId.isNotEmpty) ingredientIdsToCheck.add(recipeItem.ingredientId);
           }
         }
@@ -121,6 +120,29 @@ class OrderService {
       }
 
       return runningId; 
+    }).then((orderId) {
+      // --- 🔥 เพิ่มส่วนนี้: บันทึก Log การใช้วัตถุดิบ ---
+      _logOrderUsage(cartItems, orderId);
+      return orderId;
     });
+  }
+
+  // --- 🔥 ฟังก์ชันช่วยบันทึก Log ---
+  Future<void> _logOrderUsage(List<CartItem> cartItems, String orderId) async {
+    for (var cartItem in cartItems) {
+      for (int i = 0; i < cartItem.quantity; i++) {
+        for (var recipe in cartItem.menu.recipe) {
+           if (recipe.ingredientId.isNotEmpty) {
+             FirebaseFirestore.instance.collection('stock_logs').add({
+               'ingredientName': 'ID: ${recipe.ingredientId}', // บันทึก ID วัตถุดิบ (หรือจะ query ชื่อมาก็ได้ถ้าต้องการ)
+               'changeAmount': -recipe.quantityUsed, // ติดลบเพราะใช้ไป
+               'remainingStock': 0, // (เว้นไว้เพราะต้อง query ใหม่)
+               'reason': 'Order #$orderId (${cartItem.menu.name})',
+               'timestamp': FieldValue.serverTimestamp(),
+             });
+           }
+        }
+      }
+    }
   }
 }

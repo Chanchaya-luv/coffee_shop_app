@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 // Import หน้าจอต่างๆ
 import '../customer/quick_menu_screen.dart';
@@ -31,7 +32,7 @@ class _HomeScreenState extends State<HomeScreen> {
   
   StreamSubscription? _orderSubscription;
   bool _isFirstLoad = true; 
-  int _notificationCount = 0;
+  int _notificationCount = 0; // เก็บไว้ใช้กับ SnackBar แต่ไม่โชว์ Badge
 
   @override
   void initState() {
@@ -145,17 +146,15 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildHomeDashboard() {
-    // --- 🔥 ใช้ LayoutBuilder เพื่อเช็คขนาดหน้าจอ ---
     return LayoutBuilder(
       builder: (context, constraints) {
-        // ถ้าหน้าจอกว้างกว่า 600px ให้ถือว่าเป็น Tablet
         bool isTablet = constraints.maxWidth > 600;
 
         return SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildHeader(),
+              _buildHeader(), // ส่วนหัวที่ปรับแก้แล้ว
               Padding(
                 padding: const EdgeInsets.all(20.0),
                 child: Column(
@@ -171,7 +170,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     const SizedBox(height: 20),
                     
-                    // ส่งค่า isTablet ไปปรับ Layout
                     _buildRealTimeStats(isTablet), 
                     
                     const SizedBox(height: 30),
@@ -183,6 +181,68 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         );
       }
+    );
+  }
+
+  // --- 🔥 Header ที่ปรับแก้แล้ว ---
+  Widget _buildHeader() {
+    final user = FirebaseAuth.instance.currentUser;
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: const BoxDecoration(color: Color(0xFF6F4E37)),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          // ฝั่งซ้าย: แสดงรูปโปรไฟล์ และ ชื่อผู้ใช้ (ดึงจาก Firebase)
+          StreamBuilder<DocumentSnapshot>(
+            stream: FirebaseFirestore.instance.collection('users').doc(user?.uid).snapshots(),
+            builder: (context, snapshot) {
+              String name = "ผู้ใช้งาน"; // ชื่อเริ่มต้น
+              String imageUrl = "https://img5.pic.in.th/file/secure-sv1/05871915-7cac-440c-9a52-17e6d9d71b4c.md.png"; // รูปเริ่มต้น
+              
+              if (snapshot.hasData && snapshot.data!.exists) {
+                var data = snapshot.data!.data() as Map<String, dynamic>;
+                name = data['name'] ?? name;
+                if (data['photoUrl'] != null && data['photoUrl'].toString().isNotEmpty) {
+                  imageUrl = data['photoUrl'];
+                }
+              }
+
+              return Row(
+                children: [
+                  CircleAvatar(
+                    radius: 24,
+                    backgroundImage: NetworkImage(imageUrl),
+                    backgroundColor: Colors.transparent,
+                    onBackgroundImageError: (_,__) => const Icon(Icons.error), 
+                  ),
+                  const SizedBox(width: 10),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text("สวัสดี,", style: TextStyle(color: Colors.white70, fontSize: 12)),
+                      Text(name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white, fontFamily: 'Serif')),
+                    ],
+                  )
+                ],
+              );
+            }
+          ),
+
+          // ฝั่งขวา: เหลือแค่ไอคอนระฆัง (ไม่มีตัวเลข และไม่มีรูปวงกลม)
+          IconButton(
+            icon: const Icon(Icons.notifications_none, color: Colors.white, size: 28), 
+            onPressed: () {
+              setState(() => _notificationCount = 0);
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const NotificationScreen()),
+              );
+            }
+          ),
+        ],
+      ),
     );
   }
 
@@ -231,8 +291,6 @@ class _HomeScreenState extends State<HomeScreen> {
               }
             }
 
-            // --- 🔥 ปรับคอลัมน์ตามขนาดหน้าจอ ---
-            // มือถือ: 2 คอลัมน์, แท็บเล็ต: 4 คอลัมน์
             return GridView.count(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
@@ -253,79 +311,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildHeader() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: const BoxDecoration(color: Color(0xFF6F4E37)),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Row(
-            children: [
-              const CircleAvatar(
-                radius: 24,
-                backgroundImage: NetworkImage('https://img5.pic.in.th/file/secure-sv1/05871915-7cac-440c-9a52-17e6d9d71b4c.md.png'),
-                backgroundColor: Colors.transparent, 
-              ),
-              const SizedBox(width: 10),
-              const Text("Caffy", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white, fontFamily: 'Serif')),
-            ],
-          ),
-          Row(
-            children: [
-              Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.notifications_none, color: Colors.white, size: 28), 
-                    onPressed: () {
-                      setState(() {
-                        _notificationCount = 0;
-                      });
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (context) => const NotificationScreen()),
-                      );
-                    }
-                  ),
-                  if (_notificationCount > 0)
-                    Positioned(
-                      right: 8,
-                      top: 8,
-                      child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: const BoxDecoration(
-                          color: Colors.red,
-                          shape: BoxShape.circle,
-                        ),
-                        constraints: const BoxConstraints(
-                          minWidth: 18,
-                          minHeight: 18,
-                        ),
-                        child: Center(
-                          child: Text(
-                            '$_notificationCount',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                      ),
-                    )
-                ],
-              ),
-              const SizedBox(width: 5),
-              const CircleAvatar(radius: 20, backgroundImage: NetworkImage('https://i.pravatar.cc/150?img=32'), backgroundColor: Colors.grey),
-            ],
-          )
-        ],
-      ),
-    );
-  }
-
   Widget _buildStatCard(String title, String value, String subtitle, {bool isPositive = false, bool isAlert = false}) {
     return Container(
       padding: const EdgeInsets.all(15),
@@ -340,7 +325,7 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           Text(title, style: TextStyle(color: Colors.grey[600], fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis),
           const SizedBox(height: 5),
-          FittedBox( // ช่วยย่อขนาดถ้าตัวเลขยาวเกิน
+          FittedBox(
             fit: BoxFit.scaleDown,
             child: Text(
               value,
@@ -365,11 +350,10 @@ class _HomeScreenState extends State<HomeScreen> {
       {'icon': Icons.inventory_2, 'label': 'จัดการสต๊อกวัตถุดิบ', 'page': const StockScreen()},
       {
         'icon': Icons.bar_chart, 
-        'label': 'สรุปยอดขาย      (ภาพรวม)', 
+        'label': 'สรุปยอดขาย (ภาพรวม)', 
         'page': const ReportScreen(isFullReport: true) 
       },
       {'icon': Icons.coffee, 'label': 'Quick Menu', 'page': const QuickMenuScreen()},
-      // ปุ่มจัดการโปรโมชั่น
       {
         'icon': Icons.local_offer, 
         'label': 'จัดการโปรโมชั่น', 
@@ -381,10 +365,9 @@ class _HomeScreenState extends State<HomeScreen> {
         'label': 'จัดการเมนู', 
         'page': const ManageMenuScreen()
       },
-      // ปุ่มจอคิว
       {
         'icon': Icons.tv, 
-        'label': 'จอเรียกคิว     (Queue)', 
+        'label': 'จอเรียกคิว (Queue)', 
         'page': const QueueDisplayScreen()
       },
     ];
@@ -393,8 +376,6 @@ class _HomeScreenState extends State<HomeScreen> {
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        // --- 🔥 ปรับคอลัมน์ตามขนาดหน้าจอ ---
-        // มือถือ: 3, แท็บเล็ต: 6 (หรือ 5 ตามความเหมาะสม)
         crossAxisCount: isTablet ? 6 : 3,
         crossAxisSpacing: 15,
         mainAxisSpacing: 15,
@@ -442,7 +423,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 label,
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 12, color: Colors.grey[700], fontWeight: FontWeight.bold),
-                maxLines: 2, // เผื่อชื่อยาว
+                maxLines: 2, 
                 overflow: TextOverflow.ellipsis,
               ),
             ),
