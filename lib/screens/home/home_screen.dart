@@ -350,7 +350,7 @@ class _HomeScreenState extends State<HomeScreen> {
       {'icon': Icons.inventory_2, 'label': 'จัดการสต๊อกวัตถุดิบ', 'page': const StockScreen()},
       {
         'icon': Icons.bar_chart, 
-        'label': 'สรุปยอดขาย (ภาพรวม)', 
+        'label': 'สรุปยอดขาย     (ภาพรวม)', 
         'page': const ReportScreen(isFullReport: true) 
       },
       {'icon': Icons.coffee, 'label': 'Quick Menu', 'page': const QuickMenuScreen()},
