@@ -162,7 +162,7 @@ class _SettingScreenState extends State<SettingScreen> {
                       ),
                       
                       _buildSettingItem(Icons.notifications_active_outlined, "การแจ้งเตือน", onTap: () => _navigate(context, const NotificationScreen())),
-                      _buildSettingItem(Icons.help_outline, "ศูนย์ช่วยเหลือ / คู่มือ", showDivider: false, onTap: () => _navigate(context, const HelpCenterScreen())),
+                      _buildSettingItem(Icons.help_outline, "ศูนย์ช่วยเหลือ", showDivider: false, onTap: () => _navigate(context, const HelpCenterScreen())),
                     ],
                   ),
                   const SizedBox(height: 20),
