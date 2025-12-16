@@ -57,10 +57,10 @@ class _HomeScreenState extends State<HomeScreen> {
   void _listenToNewOrders() {
     _orderSubscription = FirebaseFirestore.instance
         .collection('orders')
-        .where('status', isEqualTo: 'pending') 
+        .where('status', isEqualTo: 'pending')
         .snapshots()
         .listen((snapshot) {
-      
+
       if (_isFirstLoad) {
         if (mounted) {
           setState(() {
@@ -73,45 +73,50 @@ class _HomeScreenState extends State<HomeScreen> {
 
       for (var change in snapshot.docChanges) {
         if (change.type == DocumentChangeType.added) {
-          var data = change.doc.data() as Map<String, dynamic>;
-          String tableNo = data['tableNumber'] ?? '?';
+          final data = change.doc.data() as Map<String, dynamic>;
+          final tableNo = data['tableNumber'] ?? '?';
 
-          if (mounted) {
-            setState(() {
-              _notificationCount++;
-            });
+          if (!mounted) return;
 
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                behavior: SnackBarBehavior.floating,
-                backgroundColor: Colors.green[800],
-                margin: const EdgeInsets.all(10),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                content: Row(
-                  children: [
-                    const Icon(Icons.notifications_active, color: Colors.white),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        "🔔 มีออเดอร์ใหม่! โต๊ะ $tableNo",
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          // 🔥 สำคัญ: ถ้า HomeScreen ไม่ได้เป็นหน้าบนสุด → ห้ามโชว์ SnackBar
+          final isCurrentRoute = ModalRoute.of(context)?.isCurrent ?? false;
+          if (!isCurrentRoute) return;
+
+          setState(() => _notificationCount++);
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              behavior: SnackBarBehavior.floating,
+              backgroundColor: Colors.green[800],
+              margin: const EdgeInsets.all(10),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              content: Row(
+                children: [
+                  const Icon(Icons.notifications_active, color: Colors.white),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      "🔔 มีออเดอร์ใหม่! โต๊ะ $tableNo",
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
                       ),
                     ),
-                  ],
-                ),
-                duration: const Duration(seconds: 5), 
-                action: SnackBarAction(
-                  label: 'ดูรายการ',
-                  textColor: Colors.yellowAccent,
-                  onPressed: () {
-                    setState(() {
-                      _selectedIndex = 1; 
-                    });
-                  },
-                ),
+                  ),
+                ],
               ),
-            );
-          }
+              duration: const Duration(seconds: 5),
+              action: SnackBarAction(
+                label: 'ดูรายการ',
+                textColor: Colors.yellowAccent,
+                onPressed: () {
+                  setState(() => _selectedIndex = 1);
+                },
+              ),
+            ),
+          );
         }
       }
     });
