@@ -23,7 +23,7 @@ class _QuickMenuScreenState extends State<QuickMenuScreen> {
   void _openCustomizeDialog(MenuItem menu) {
     // --- 🔥 Logic เช็คหมวดหมู่ (เหมือนฝั่งลูกค้า) ---
     // ถ้าเป็น เบเกอรี่ หรือ ของหวาน ไม่ต้องถามความหวาน/นม
-    if (['เบเกอรี่', 'ขนม', 'เค้ก', 'ของหวาน', 'ผลไม้'].contains(menu.category)) {
+    if (['เบเกอรี่', 'ขนม', 'เค้ก', 'ของหวาน'].contains(menu.category)) {
       
       // เพิ่มลงตะกร้าทันที (ระบุ option เป็น '-')
       Provider.of<CartProvider>(context, listen: false).addItem(

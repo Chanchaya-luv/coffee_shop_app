@@ -6,7 +6,8 @@ import '../../models/model_menu.dart';
 import '../../providers/cart_provider.dart';
 import 'checkout_screen.dart';
 import 'customer_tracking_screen.dart';
-import '../common/product_customize_dialog.dart';
+// --- 🔥 เพิ่ม Import หน้าต่างเลือกตัวเลือก (Visual) ---
+import '../common/visual_product_customize_dialog.dart';
 // --- 🔥 เพิ่ม Import หน้า Mood ---
 import 'mood_recommendation_screen.dart';
 
@@ -23,10 +24,10 @@ class _MenuScreenState extends State<MenuScreen> {
   final List<String> _categories = ["กาแฟ", "ชา", "นมสด", "ผลไม้", "เบเกอรี่"];
   String _selectedCategory = "ทั้งหมด"; 
 
-  // --- 🔥 ฟังก์ชันเปิดหน้าต่างเลือกตัวเลือก ---
+  // --- 🔥 ฟังก์ชันเปิดหน้าต่างเลือกตัวเลือก (แก้ไขใหม่) ---
   void _openCustomizeDialog(MenuItem menu) {
     // 1. เช็คหมวดหมู่ที่ไม่ต้องเลือก Option (เช่น เบเกอรี่)
-    if (['เบเกอรี่', 'ขนม', 'เค้ก', 'ของหวาน', 'ผลไม้'].contains(menu.category)) {
+    if (['เบเกอรี่', 'ขนม', 'เค้ก', 'ของหวาน'].contains(menu.category)) {
       
       // เพิ่มลงตะกร้าเลย (ใส่ค่า '-' เพื่อบอกว่าไม่มี Option)
       Provider.of<CartProvider>(context, listen: false).addItem(
@@ -44,10 +45,10 @@ class _MenuScreenState extends State<MenuScreen> {
       return; // จบการทำงาน ไม่เปิด Dialog
     }
 
-    // 2. ถ้าเป็นหมวดอื่นๆ (เครื่องดื่ม) ให้เปิด Dialog เลือกความหวาน/นม
+    // 2. ถ้าเป็นหมวดอื่นๆ (เครื่องดื่ม) ให้เปิด Visual Dialog
     showDialog(
       context: context,
-      builder: (context) => ProductCustomizeDialog(
+      builder: (context) => VisualProductCustomizeDialog( // 👈 ใช้ตัวใหม่นี้
         menu: menu,
         onConfirm: (sweetness, milk) {
           // เพิ่มลงตะกร้าพร้อมตัวเลือก
@@ -191,7 +192,7 @@ class _MenuScreenState extends State<MenuScreen> {
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
                     ),
                     icon: const Icon(Icons.auto_awesome, color: Colors.orange),
-                    label: const Text("ไม่รู้จะกินอะไร? ให้เราช่วยเลือก (คลิก)", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    label: const Text("ไม่รู้จะกินอะไร? ให้เราช่วยเลือก", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                   ),
                 ),
               ),
@@ -228,7 +229,7 @@ class _MenuScreenState extends State<MenuScreen> {
                           category: data['category'] ?? 'อื่นๆ',
                           imageUrl: data['imageUrl'] ?? '',
                           recipe: recipeList,
-                          isAvailable: data['isAvailable'] ?? true,
+                          isAvailable: data['isAvailable'] ?? true, 
                         );
 
                         return _buildMenuCard(context, menu);
@@ -259,7 +260,6 @@ class _MenuScreenState extends State<MenuScreen> {
   }
 
   Widget _buildMenuCard(BuildContext context, MenuItem menu) {
-    // --- 🔥 ใช้ GestureDetector ครอบเพื่อกดที่การ์ดแล้วเด้ง Popup ---
     return GestureDetector(
       onTap: menu.isAvailable ? () => _openCustomizeDialog(menu) : null,
       child: Container(
@@ -275,6 +275,7 @@ class _MenuScreenState extends State<MenuScreen> {
                     decoration: BoxDecoration(color: Colors.brown[50], borderRadius: BorderRadius.circular(12)),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(12),
+                      // --- 🔥 แสดงรูปภาพ ---
                       child: menu.imageUrl.isNotEmpty
                           ? ColorFiltered(
                               colorFilter: menu.isAvailable 
@@ -302,14 +303,14 @@ class _MenuScreenState extends State<MenuScreen> {
             ),
             const SizedBox(height: 10),
             
-            Text(menu.name, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: menu.isAvailable ? Colors.black : Colors.grey), maxLines: 1),
+            Text(menu.name, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: menu.isAvailable ? Colors.black : Colors.grey), maxLines: 1, overflow: TextOverflow.ellipsis),
             
             Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
               Text("฿${menu.price.toStringAsFixed(0)}", style: const TextStyle(color: Colors.grey)),
               
               if (menu.isAvailable)
                 InkWell(
-                  onTap: () => _openCustomizeDialog(menu), // กดบวกก็เปิด Popup เหมือนกัน
+                  onTap: () => _openCustomizeDialog(menu), 
                   child: Container(padding: const EdgeInsets.all(6), decoration: const BoxDecoration(color: Color(0xFFA6C48A), shape: BoxShape.circle), child: const Icon(Icons.add, color: Colors.white, size: 20))
                 )
               else

@@ -1,3 +1,4 @@
+import 'package:coffee_shop_app/screens/common/visual_product_customize_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
@@ -20,7 +21,7 @@ class _MoodRecommendationScreenState extends State<MoodRecommendationScreen> {
   final List<Map<String, dynamic>> _moods = [
     {'label': 'ง่วงนอน 😴', 'key': 'sleepy', 'color': Colors.blue},
     {'label': 'ร้อน/กระหาย 🥵', 'key': 'fresh', 'color': Colors.orange},
-    {'label': 'เครียด/อยากหวาน 🤯', 'key': 'sweet', 'color': Colors.pink},
+    {'label': 'เครียด/เติมหวาน 🤯', 'key': 'sweet', 'color': Colors.pink},
     {'label': 'รักสุขภาพ 🌿', 'key': 'healthy', 'color': Colors.green},
   ];
 
@@ -75,13 +76,13 @@ class _MoodRecommendationScreenState extends State<MoodRecommendationScreen> {
 
   void _openCustomizeDialog(MenuItem menu) {
     // ใช้ Dialog เดิมที่มีอยู่
-    if (['เบเกอรี่', 'ขนม', 'เค้ก', 'ของหวาน', 'ผลไม้'].contains(menu.category)) {
+    if (['เบเกอรี่', 'ขนม', 'เค้ก', 'ของหวาน'].contains(menu.category)) {
       Provider.of<CartProvider>(context, listen: false).addItem(menu, sweetness: '-', milk: '-');
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("เพิ่ม ${menu.name} แล้ว"), duration: const Duration(milliseconds: 500)));
     } else {
       showDialog(
         context: context,
-        builder: (context) => ProductCustomizeDialog(
+        builder: (context) => VisualProductCustomizeDialog(
           menu: menu,
           onConfirm: (sweetness, milk) {
             Provider.of<CartProvider>(context, listen: false).addItem(menu, sweetness: sweetness, milk: milk);
