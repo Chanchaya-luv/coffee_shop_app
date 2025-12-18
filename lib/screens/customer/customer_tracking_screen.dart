@@ -2,10 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 
-class CustomerTrackingScreen extends StatelessWidget {
+class CustomerTrackingScreen extends StatefulWidget {
   final String orderId; // รับเลขคิว เช่น "0001"
 
   const CustomerTrackingScreen({super.key, required this.orderId});
+
+  @override
+  State<CustomerTrackingScreen> createState() => _CustomerTrackingScreenState();
+}
+
+class _CustomerTrackingScreenState extends State<CustomerTrackingScreen> {
+  // --- 🔥 เพิ่มตัวแปรเก็บสถานะการขยายรายการ ---
+  bool _isExpanded = false; 
+  
 
   @override
   Widget build(BuildContext context) {
@@ -22,7 +31,7 @@ class CustomerTrackingScreen extends StatelessWidget {
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
             .collection('orders')
-            .where('orderId', isEqualTo: orderId)
+            .where('orderId', isEqualTo: widget.orderId)
             .limit(1)
             .snapshots(),
         builder: (context, snapshot) {
@@ -36,7 +45,7 @@ class CustomerTrackingScreen extends StatelessWidget {
                 children: [
                   const Icon(Icons.search_off, size: 60, color: Colors.grey),
                   const SizedBox(height: 20),
-                  Text("ไม่พบออเดอร์หมายเลข #$orderId", style: const TextStyle(color: Colors.grey, fontSize: 16)),
+                  Text("ไม่พบออเดอร์หมายเลข #$widget.orderId", style: const TextStyle(color: Colors.grey, fontSize: 16)),
                   const SizedBox(height: 10),
                   const Text("กรุณาติดต่อพนักงาน", style: TextStyle(color: Colors.grey)),
                 ],
@@ -66,6 +75,8 @@ class CustomerTrackingScreen extends StatelessWidget {
             groupedItems[item] = (groupedItems[item] ?? 0) + 1;
             totalCups++;
           }
+
+          var entryList = groupedItems.entries.toList();
           
           double totalPrice = 0.0;
           if (data['totalPrice'] != null) totalPrice = double.tryParse(data['totalPrice'].toString()) ?? 0.0;
@@ -194,10 +205,10 @@ class CustomerTrackingScreen extends StatelessWidget {
                           const Divider(),
                           if (items.isEmpty) const Text("- ไม่ระบุรายการ -", style: TextStyle(color: Colors.grey)),
                           
-                          // --- แสดงรายการแบบ Grouped ---
-                          ...groupedItems.entries.map((entry) {
-                            String itemName = entry.key;
-                            int count = entry.value;
+                          // --- 🔥 แสดงรายการแบบจำกัด (4 รายการแรก หรือทั้งหมดถ้ากดขยาย) ---
+                      ...entryList.take(_isExpanded ? entryList.length : 4).map((entry) {
+                        String itemName = entry.key;
+                        int count = entry.value;
                             return Padding(
                               padding: const EdgeInsets.symmetric(vertical: 8),
                               child: Row(
@@ -221,6 +232,32 @@ class CustomerTrackingScreen extends StatelessWidget {
                               ),
                             );
                           }).toList(),
+
+                          // --- 🔥 ปุ่มดูเพิ่มเติม (จะโชว์ถ้ามีมากกว่า 4 รายการ) ---
+                      if (entryList.length > 4)
+                        InkWell(
+                          onTap: () {
+                            setState(() {
+                              _isExpanded = !_isExpanded;
+                            });
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  _isExpanded ? "ย่อรายการ" : "ดูเพิ่มเติม (${entryList.length - 4} รายการ)",
+                                  style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.bold),
+                                ),
+                                Icon(
+                                  _isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                                  color: Colors.grey,
+                                )
+                              ],
+                            ),
+                          ),
+                        ),
                           
                           const Divider(),
                           Row(

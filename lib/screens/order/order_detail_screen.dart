@@ -3,17 +3,24 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'print_bill_screen.dart';
 
-class OrderDetailScreen extends StatelessWidget {
+// --- เปลี่ยนเป็น StatefulWidget เพื่อเก็บสถานะ _isExpanded ---
+class OrderDetailScreen extends StatefulWidget {
   final String orderId;
 
   const OrderDetailScreen({super.key, required this.orderId});
 
-  // --- ฟังก์ชันอัปเดตสถานะ (เหมือนเดิม) ---
+  @override
+  State<OrderDetailScreen> createState() => _OrderDetailScreenState();
+}
+
+class _OrderDetailScreenState extends State<OrderDetailScreen> {
+  bool _isExpanded = false; // เก็บสถานะว่ากดดูเพิ่มเติมหรือยัง
+
+  // --- ฟังก์ชันอัปเดตสถานะ ---
   void _updateStatus(BuildContext context, String currentStatus, String tableNo) {
     String newStatus = '';
     String actionLabel = '';
 
-    // Logic เปลี่ยนสถานะ
     if (currentStatus == 'pending') {
       newStatus = 'cooking';
       actionLabel = 'เริ่มทำอาหาร (Cooking)';
@@ -27,12 +34,10 @@ class OrderDetailScreen extends StatelessWidget {
       return; 
     }
 
-    // อัปเดตสถานะออเดอร์
-    FirebaseFirestore.instance.collection('orders').doc(orderId).update({
+    FirebaseFirestore.instance.collection('orders').doc(widget.orderId).update({
       'status': newStatus,
     });
 
-    // ถ้าจบออเดอร์ ให้คืนโต๊ะ
     if (newStatus == 'completed') {
       if (int.tryParse(tableNo) != null) {
         FirebaseFirestore.instance.collection('tables').doc(tableNo).update({
@@ -58,7 +63,7 @@ class OrderDetailScreen extends StatelessWidget {
       ),
       
       body: StreamBuilder<DocumentSnapshot>(
-        stream: FirebaseFirestore.instance.collection('orders').doc(orderId).snapshots(),
+        stream: FirebaseFirestore.instance.collection('orders').doc(widget.orderId).snapshots(),
         builder: (context, snapshot) {
           if (snapshot.hasError) return const Center(child: Text("เกิดข้อผิดพลาด"));
           if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
@@ -69,24 +74,23 @@ class OrderDetailScreen extends StatelessWidget {
 
           var data = snapshot.data!.data() as Map<String, dynamic>;
           
-          // ดึงข้อมูลพื้นฐาน
           String displayId = data['orderId'] ?? 'Unknown';
           String tableNo = data['tableNumber'] ?? '-';
           String status = data['status'] ?? 'pending'; 
           Timestamp? ts = data['timestamp'];
           String dateStr = ts != null ? DateFormat('d MMM yy, HH.mm น.').format(ts.toDate()) : '-';
           
-          // --- 🔥 คำนวณราคาและส่วนลด ---
-          double totalPrice = (data['totalPrice'] ?? 0).toDouble(); // ยอดสุทธิ (Net)
-          double discount = (data['discount'] ?? 0).toDouble();     // ส่วนลด
-          double originalPrice = totalPrice + discount;            // ยอดก่อนลด (Total)
+          double totalPrice = (data['totalPrice'] ?? 0).toDouble();
+          double discount = (data['discount'] ?? 0).toDouble();
+          double originalPrice = totalPrice + discount;
 
-          // ดึงรายการอาหาร
           List<dynamic> rawItems = data['items'] ?? [];
           Map<String, int> itemCounts = {};
           for (var item in rawItems) {
             itemCounts[item] = (itemCounts[item] ?? 0) + 1;
           }
+          // แปลง Map เป็น List เพื่อให้ง่ายต่อการตัดแสดงผล
+          final itemEntries = itemCounts.entries.toList();
 
           return Column(
             children: [
@@ -125,13 +129,10 @@ class OrderDetailScreen extends StatelessWidget {
                         ),
                         child: Column(
                           children: [
-                            ListView.builder(
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              itemCount: itemCounts.length,
-                              itemBuilder: (context, index) {
-                                String name = itemCounts.keys.elementAt(index);
-                                int qty = itemCounts[name]!;
+                            // --- 🔥 แสดงรายการแบบย่อ/ขยาย ---
+                            ...itemEntries.take(_isExpanded ? itemEntries.length : 4).map((entry) {
+                                String name = entry.key;
+                                int qty = entry.value;
                                 return Padding(
                                   padding: const EdgeInsets.symmetric(vertical: 8.0),
                                   child: Row(
@@ -145,11 +146,36 @@ class OrderDetailScreen extends StatelessWidget {
                                     ],
                                   ),
                                 );
-                              },
-                            ),
+                            }).toList(),
+
+                            // --- ปุ่มกดดูเพิ่มเติม ---
+                            if (itemEntries.length > 4)
+                              InkWell(
+                                onTap: () {
+                                  setState(() {
+                                    _isExpanded = !_isExpanded;
+                                  });
+                                },
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 10),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                        _isExpanded ? "ย่อรายการ" : "ดูเพิ่มเติม (${itemEntries.length - 4} รายการ)",
+                                        style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.bold),
+                                      ),
+                                      Icon(
+                                        _isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                                        color: Colors.grey,
+                                      )
+                                    ],
+                                  ),
+                                ),
+                              ),
+
                             const Divider(height: 30),
                             
-                            // --- 🔥 ส่วนแสดงยอดเงินและส่วนลด (เพิ่มใหม่) ---
                             _buildPriceRow("ยอดรวมสินค้า", originalPrice, isBold: false),
                             
                             if (discount > 0)
@@ -165,7 +191,7 @@ class OrderDetailScreen extends StatelessWidget {
                 ),
               ),
 
-              // --- Footer: ปุ่มจัดการสถานะ ---
+              // --- Footer ---
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
@@ -190,12 +216,11 @@ class OrderDetailScreen extends StatelessWidget {
                     
                     const SizedBox(height: 10),
 
-                    // ปุ่มพิมพ์บิล
                     SizedBox(
                       width: double.infinity,
                       child: OutlinedButton.icon(
                         onPressed: () {
-                          Navigator.push(context, MaterialPageRoute(builder: (context) => PrintBillScreen(orderId: orderId)));
+                          Navigator.push(context, MaterialPageRoute(builder: (context) => PrintBillScreen(orderId: widget.orderId)));
                         },
                         icon: const Icon(Icons.print, size: 18),
                         label: const Text("พิมพ์บิล"),
@@ -217,7 +242,6 @@ class OrderDetailScreen extends StatelessWidget {
     );
   }
 
-  // --- Widget ช่วยสร้างแถวราคา ---
   Widget _buildPriceRow(String label, double amount, {bool isBold = false, Color color = Colors.black87, double fontSize = 16, bool isNegative = false}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -234,7 +258,6 @@ class OrderDetailScreen extends StatelessWidget {
     );
   }
 
-  // Helper: สีของสถานะ
   Color _getStatusColor(String status) {
     switch (status) {
       case 'pending': return Colors.orange;
@@ -245,7 +268,6 @@ class OrderDetailScreen extends StatelessWidget {
     }
   }
 
-  // Helper: ข้อความสถานะ
   String _getStatusText(String status) {
     switch (status) {
       case 'pending': return "รอทำ (Pending)";
@@ -256,7 +278,6 @@ class OrderDetailScreen extends StatelessWidget {
     }
   }
 
-  // Helper: ข้อความปุ่มถัดไป
   String _getNextStatusText(String status) {
     switch (status) {
       case 'pending': return "รับออเดอร์ (เริ่มทำ)";
@@ -266,7 +287,6 @@ class OrderDetailScreen extends StatelessWidget {
     }
   }
 
-  // Helper: สีปุ่มถัดไป
   Color _getNextStatusColor(String status) {
     switch (status) {
       case 'pending': return Colors.blue;
