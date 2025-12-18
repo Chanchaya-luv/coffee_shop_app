@@ -28,7 +28,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     );
 
     // 2. ตั้งเวลา 3 วินาที แล้วไปหน้าถัดไป
-    Timer(const Duration(seconds: 5), () {
+    Timer(const Duration(seconds: 3), () {
       // หยุด Animation
       _controller.dispose();
       

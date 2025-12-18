@@ -18,7 +18,7 @@ class _AddMenuScreenState extends State<AddMenuScreen> {
   late TextEditingController _priceCtrl;
   late TextEditingController _imageUrlCtrl;
   
-  final List<String> _categories = ["กาแฟ", "ชา", "นมสด", "ผลไม้", "อื่นๆ"];
+  final List<String> _categories = ["กาแฟ", "ชา", "นมสด", "ผลไม้", "เบเกอรี่","อื่นๆ"];
   String _selectedCategory = "กาแฟ";
   bool _isAvailable = true; // ตัวแปรสถานะ
 

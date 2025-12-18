@@ -19,7 +19,7 @@ class MenuScreen extends StatefulWidget {
 }
 
 class _MenuScreenState extends State<MenuScreen> {
-  final List<String> _categories = ["กาแฟ", "ชา", "นมสด", "ผลไม้"];
+  final List<String> _categories = ["กาแฟ", "ชา", "นมสด", "ผลไม้","เบเกอรี่"];
   int _selectedIndex = 0;
 
   // --- 🔥 ฟังก์ชันเปิดหน้าต่างเลือกตัวเลือก (เหมือน Admin) ---

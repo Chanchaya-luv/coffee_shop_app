@@ -17,7 +17,7 @@ class QuickMenuScreen extends StatefulWidget {
 }
 
 class _QuickMenuScreenState extends State<QuickMenuScreen> {
-  final List<String> _categories = ["กาแฟ", "ชา", "นมสด", "ผลไม้"];
+  final List<String> _categories = ["กาแฟ", "ชา", "นมสด", "ผลไม้","เบเกอรี่"];
   int _selectedIndex = 0;
 
   void _openCustomizeDialog(MenuItem menu) {

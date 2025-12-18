@@ -4,9 +4,12 @@ import 'package:provider/provider.dart';
 import '../../providers/cart_provider.dart';
 import 'payment_screen.dart';
 import '../../screens/admin/table_monitor_screen.dart'; 
-// --- 🔥 เพิ่ม Import 2 ไฟล์นี้ ---
 import '../../services/promotion_service.dart';
 import '../../models/model_promotion.dart';
+
+import '../../services/smart_upsell_service.dart';
+import '../../models/model_menu.dart'; 
+// ลบ import member
 
 class CheckoutScreen extends StatefulWidget {
   final String tableNumber;
@@ -27,14 +30,145 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   late String _currentTable;
   double _discountAmount = 0.0;
   String _discountNote = "";
+  bool _hasCheckedUpsell = false;
 
   @override
   void initState() {
     super.initState();
     _currentTable = widget.tableNumber;
+    
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_hasCheckedUpsell) {
+        _checkAndShowUpsell();
+      }
+    });
   }
 
-  // --- 🔥 ฟังก์ชันแสดงหน้าต่างเลือกโปรโมชั่น ---
+  Future<void> _checkAndShowUpsell() async {
+    final cart = Provider.of<CartProvider>(context, listen: false);
+    final items = cart.items.values.toList();
+    
+    // เช็คว่าเคยมีสินค้าโปรโมชั่นในตะกร้าหรือยัง
+    bool hasPromoItem = items.any((item) => item.menu.id.endsWith('_PROMO'));
+    if (hasPromoItem) return;
+
+    // --- 🔥 แก้ตรงนี้: เรียก getUpsellItems (เติม s) และรับเป็น List ---
+    List<MenuItem> upsellItems = await SmartUpsellService().getUpsellItems(items);
+
+    if (upsellItems.isNotEmpty && mounted) {
+      _showUpsellDialog(upsellItems); // ส่ง List ไปแสดงผล
+      _hasCheckedUpsell = true; 
+    }
+  }
+
+  // --- 🔥 ปรับปรุง: Dialog แสดงรายการให้เลือก (Multi Choice) ---
+  void _showUpsellDialog(List<MenuItem> upsellItems) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        contentPadding: EdgeInsets.zero,
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Header
+            Container(
+              height: 100,
+              width: double.infinity,
+              decoration: const BoxDecoration(
+                color: Color(0xFF6F4E37),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.stars, color: Colors.yellow, size: 36),
+                  const SizedBox(height: 5),
+                  const Text("ข้อเสนอพิเศษ!", style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+                  const Text("เลือกรับสิทธิ์แลกซื้อ 1 อย่าง (ลด 20%)", style: TextStyle(color: Colors.white70, fontSize: 14)),
+                ],
+              ),
+            ),
+            
+            // List Items
+            Container(
+              height: 300, // กำหนดความสูงเพื่อให้ Scroll ได้
+              width: double.maxFinite,
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              child: ListView.separated(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                itemCount: upsellItems.length,
+                separatorBuilder: (_,__) => const Divider(),
+                itemBuilder: (context, index) {
+                  final item = upsellItems[index];
+                  double specialPrice = item.price * 0.8; // ลด 20%
+
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: item.imageUrl.isNotEmpty
+                          ? Image.network(item.imageUrl, width: 60, height: 60, fit: BoxFit.cover, errorBuilder: (_,__,___) => Container(width: 60, height: 60, color: Colors.brown[100], child: const Icon(Icons.coffee, color: Colors.brown)))
+                          : Container(width: 60, height: 60, color: Colors.brown[100], child: const Icon(Icons.cake, color: Colors.brown)),
+                    ),
+                    title: Text(item.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                    subtitle: Row(
+                      children: [
+                        Text("฿${item.price.toStringAsFixed(0)}", style: const TextStyle(decoration: TextDecoration.lineThrough, color: Colors.grey, fontSize: 12)),
+                        const SizedBox(width: 5),
+                        Text("฿${specialPrice.toStringAsFixed(0)}", style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 16)),
+                      ],
+                    ),
+                    trailing: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFA6C48A),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        minimumSize: const Size(70, 35),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      onPressed: () {
+                         // Logic เพิ่มสินค้า (เลือกได้แค่ 1)
+                         MenuItem discountedItem = MenuItem(
+                            id: "${item.id}_PROMO", 
+                            name: "${item.name} (Pro 20%)",
+                            price: specialPrice,
+                            category: item.category,
+                            imageUrl: item.imageUrl,
+                            recipe: item.recipe,
+                            isAvailable: true,
+                          );
+                          
+                          Provider.of<CartProvider>(context, listen: false).addItem(discountedItem);
+                          Navigator.pop(ctx);
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("เพิ่มสินค้าโปรโมชั่นแล้ว!"), backgroundColor: Colors.green));
+                      },
+                      child: const Text("เลือก"),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              onPressed: () => Navigator.pop(ctx),
+              style: OutlinedButton.styleFrom(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                side: const BorderSide(color: Colors.grey),
+              ),
+              child: const Text("ไม่รับ ขอบคุณ", style: TextStyle(color: Colors.grey)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showPromotionDialog(List<CartItem> items, double totalAmount) {
     showModalBottomSheet(
       context: context,
@@ -46,19 +180,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             children: [
               const Text("เลือกโปรโมชั่น", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               const SizedBox(height: 10),
-              
-              // 1. ส่วนลดกำหนดเอง (Manual)
-              ListTile(
-                leading: const Icon(Icons.edit, color: Colors.blue),
-                title: const Text("ส่วนลดกำหนดเอง (Manual)"),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _showDiscountDialog(totalAmount); // เรียก Dialog เดิม
-                },
-              ),
+              ListTile(leading: const Icon(Icons.edit, color: Colors.blue), title: const Text("ส่วนลดกำหนดเอง (Manual)"), onTap: () { Navigator.pop(ctx); _showDiscountDialog(totalAmount); }),
               const Divider(),
-              
-              // 2. โปรโมชั่นอัตโนมัติ (Auto)
               Expanded(
                 child: StreamBuilder<List<Promotion>>(
                   stream: PromotionService().getActivePromotions(),
@@ -66,29 +189,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
                     var promos = snapshot.data!;
                     if (promos.isEmpty) return const Center(child: Text("ไม่มีโปรโมชั่นที่เปิดใช้งาน"));
-
                     return ListView.builder(
                       itemCount: promos.length,
                       itemBuilder: (context, index) {
                         var p = promos[index];
-                        // คำนวณส่วนลด
                         double calDiscount = PromotionService().calculateDiscount(p, items, totalAmount);
                         bool isApplicable = calDiscount > 0;
-
-                        return ListTile(
-                          leading: const Icon(Icons.local_offer, color: Colors.orange),
-                          title: Text(p.name),
-                          subtitle: Text(isApplicable ? "ลด ฿${calDiscount.toStringAsFixed(0)}" : "เงื่อนไขไม่ตรง"),
-                          trailing: isApplicable ? const Icon(Icons.check_circle, color: Colors.green) : null,
-                          enabled: isApplicable, // กดได้เฉพาะถ้าเงื่อนไขตรง
-                          onTap: isApplicable ? () {
-                            setState(() {
-                              _discountAmount = calDiscount;
-                              _discountNote = p.name;
-                            });
-                            Navigator.pop(ctx);
-                          } : null,
-                        );
+                        return ListTile(leading: const Icon(Icons.local_offer, color: Colors.orange), title: Text(p.name), subtitle: Text(isApplicable ? "ลด ฿${calDiscount.toStringAsFixed(0)}" : "เงื่อนไขไม่ตรง"), trailing: isApplicable ? const Icon(Icons.check_circle, color: Colors.green) : null, enabled: isApplicable, onTap: isApplicable ? () { setState(() { _discountAmount = calDiscount; _discountNote = p.name; }); Navigator.pop(ctx); } : null);
                       },
                     );
                   },
@@ -101,7 +208,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     );
   }
 
-  // (Dialog เดิมของคุณ)
   void _showDiscountDialog(double totalAmount) {
      final valueCtrl = TextEditingController();
      bool isPercent = false;
@@ -120,7 +226,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   @override
   Widget build(BuildContext context) {
     final cart = Provider.of<CartProvider>(context);
-    final items = cart.items.values.toList(); 
+    final items = cart.items.values.toList();
     
     double totalAmount = cart.totalAmount;
     double finalTotal = totalAmount - _discountAmount;
@@ -158,13 +264,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   separatorBuilder: (_, __) => const Divider(height: 30),
                   itemBuilder: (context, index) {
                     var cartItem = items[index];
+                    
+                    // --- 🔥 เช็คว่าเป็นสินค้าโปรโมชั่นหรือไม่ ---
+                    bool isPromo = cartItem.menu.id.endsWith('_PROMO');
+
                     return Row(
                       children: [
                         // ปุ่มถังขยะ
-                        IconButton(
-                          icon: const Icon(Icons.delete_outline, color: Colors.brown), 
-                          onPressed: () => cart.removeItem(cartItem.key) 
-                        ),
+                        IconButton(icon: const Icon(Icons.delete_outline, color: Colors.brown), onPressed: () => cart.removeItem(cartItem.key)),
                         
                         Expanded(
                           child: Column(
@@ -177,32 +284,29 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                           )
                         ),
                         
-                        // ปุ่ม +/-
                         Container(
                           decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(8)),
                           child: Row(
                             children: [
-                              IconButton(
-                                icon: const Icon(Icons.remove, size: 18, color: Colors.black),
-                                padding: EdgeInsets.zero,
-                                constraints: const BoxConstraints(minWidth: 35, minHeight: 35),
-                                onPressed: () => cart.removeSingleItem(cartItem.key),
-                              ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8), 
-                                decoration: BoxDecoration(border: Border.symmetric(vertical: BorderSide(color: Colors.grey.shade300))), 
-                                child: Text("${cartItem.quantity}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.add, size: 18, color: Colors.green),
-                                padding: EdgeInsets.zero,
-                                constraints: const BoxConstraints(minWidth: 35, minHeight: 35),
-                                onPressed: () => cart.addQuantity(cartItem.key),
+                              InkWell(onTap: () => cart.removeSingleItem(cartItem.key), child: const Padding(padding: EdgeInsets.symmetric(horizontal: 8), child: Text("-", style: TextStyle(fontSize: 20)))),
+                              Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(border: Border.symmetric(vertical: BorderSide(color: Colors.grey.shade300))), child: Text("${cartItem.quantity}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))),
+                              
+                              // --- 🔥 ปุ่มบวก: ถ้าเป็นโปรโมชั่น ห้ามกด ---
+                              InkWell(
+                                onTap: isPromo 
+                                    ? () {
+                                        ScaffoldMessenger.of(context).hideCurrentSnackBar(); 
+                                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("สินค้าโปรโมชั่นจำกัด 1 ชิ้นต่อออเดอร์ หากต้องการเพิ่มกรุณาสั่งแบบราคาปกติ"), duration: Duration(seconds: 2)));
+                                      } 
+                                    : () => cart.addQuantity(cartItem.key),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8), 
+                                  child: Text("+", style: TextStyle(fontSize: 20, color: isPromo ? Colors.grey : Colors.green))
+                                )
                               ),
                             ],
                           ),
                         ),
-                        
                         const SizedBox(width: 15),
                         Text("฿${(cartItem.menu.price * cartItem.quantity).toStringAsFixed(0)}", style: const TextStyle(fontWeight: FontWeight.bold)),
                       ],
@@ -219,27 +323,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             child: Column(
               children: [
                 _buildSummaryRow("ยอดรวม", totalAmount),
-                
-                // --- 🔥 แถวส่วนลด (กดเพื่อเรียก Popup) ---
-                InkWell(
-                  onTap: () => _showPromotionDialog(items, totalAmount), // เรียกฟังก์ชันใหม่
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Row(children: [
-                           const Text("ส่วนลด / โปรโมชั่น", style: TextStyle(color: Colors.grey)),
-                           const SizedBox(width: 5),
-                           const Icon(Icons.local_offer, size: 14, color: Colors.orange), // ไอคอน Tag
-                           if (_discountNote.isNotEmpty) Text(" ($_discountNote)", style: const TextStyle(fontSize: 12, color: Colors.blue)),
-                        ]),
-                        Text("- ฿${_discountAmount.toStringAsFixed(0)}", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
-                      ],
-                    ),
-                  ),
-                ),
-                
+                InkWell(onTap: () => _showPromotionDialog(items, totalAmount), child: Padding(padding: const EdgeInsets.symmetric(vertical: 4), child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Row(children: [const Text("ส่วนลด / โปรโมชั่น", style: TextStyle(color: Colors.grey)), const SizedBox(width: 5), const Icon(Icons.local_offer, size: 14, color: Colors.orange), if (_discountNote.isNotEmpty) Text(" ($_discountNote)", style: const TextStyle(fontSize: 12, color: Colors.blue))]), Text("- ฿${_discountAmount.toStringAsFixed(0)}", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red))]))),
                 const Divider(),
                 Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text("ยอดรวมทั้งหมด", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF5D4037))), Text("฿${finalTotal.toStringAsFixed(0)}", style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF5D4037)))]),
                 const SizedBox(height: 20),
