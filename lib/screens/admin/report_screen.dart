@@ -23,6 +23,9 @@ class ReportScreen extends StatefulWidget {
 class _ReportScreenState extends State<ReportScreen> {
   String _selectedPeriod = 'Daily';
   late Future<void> _initializeLocaleFuture;
+  
+  // --- 🔥 ตัวแปรเก็บหมวดหมู่สินค้า (เอาไว้เช็คว่าเป็นเค้กไหม) ---
+  Map<String, String> _menuCategories = {};
 
   @override
   void initState() {
@@ -34,22 +37,48 @@ class _ReportScreenState extends State<ReportScreen> {
     } else {
       _selectedPeriod = 'Daily';
     }
+    
+    // โหลดข้อมูลเมนูเพื่อเอามาเช็คหมวดหมู่
+    _fetchMenuData();
   }
 
-  // --- ฟังก์ชันตัดคำในวงเล็บทิ้ง ---
+  Future<void> _fetchMenuData() async {
+    try {
+      var snapshot = await FirebaseFirestore.instance.collection('menu_items').get();
+      Map<String, String> tempMap = {};
+      for (var doc in snapshot.docs) {
+        var data = doc.data();
+        String name = data['name'] ?? '';
+        String cat = data['category'] ?? '';
+        if (name.isNotEmpty) {
+          tempMap[name] = cat;
+        }
+      }
+      if (mounted) {
+        setState(() {
+          _menuCategories = tempMap;
+        });
+      }
+    } catch (e) {
+      print("Error fetching menu data: $e");
+    }
+  }
+
   String _cleanMenuName(String fullName) {
     if (fullName.contains(' (')) {
-      return fullName.split(' (')[0]; // ตัดตั้งแต่เจอวงเล็บเปิด
+      return fullName.split(' (')[0]; 
     }
     return fullName;
   }
 
-  // --- ฟังก์ชันสร้าง PDF ---
+  // --- ฟังก์ชันสร้าง PDF (เพิ่มข้อมูลใหม่) ---
   Future<void> _printReport({
     required double totalSales,
     required double totalDiscount,
     required int totalCups,
     required int totalOrders,
+    required int totalBakery, // 🔥 จำนวนเค้ก
+    required int totalUpsell, // 🔥 จำนวนรับข้อเสนอ
     required List<MapEntry<String, int>> topMenus,
   }) async {
     final font = await PdfGoogleFonts.sarabunRegular();
@@ -63,7 +92,6 @@ class _ReportScreenState extends State<ReportScreen> {
     else if (_selectedPeriod == 'Monthly') periodText = 'รายเดือน (Monthly)';
     else periodText = 'รายปี (Yearly)';
 
-    // เอาแค่ 3 อันดับ
     final top3Menus = topMenus.take(3).toList();
 
     doc.addPage(
@@ -86,11 +114,18 @@ class _ReportScreenState extends State<ReportScreen> {
               ),
               pw.SizedBox(height: 20),
               
+              // --- สรุปแถวที่ 1 (การเงิน) ---
               pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
                 _buildPdfStatBox("ยอดขายสุทธิ", "${NumberFormat('#,##0.00').format(totalSales)} บ.", font, fontBold, PdfColors.green800),
                 _buildPdfStatBox("ส่วนลดรวม", "${NumberFormat('#,##0.00').format(totalDiscount)} บ.", font, fontBold, PdfColors.red800),
                 _buildPdfStatBox("จำนวนออเดอร์", "$totalOrders บิล", font, fontBold, PdfColors.blue800),
-                _buildPdfStatBox("จำนวนแก้ว", "$totalCups แก้ว", font, fontBold, PdfColors.orange800),
+              ]),
+              pw.SizedBox(height: 10),
+              // --- 🔥 สรุปแถวที่ 2 (สินค้า) ---
+              pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
+                _buildPdfStatBox("จำนวนแก้วรวม", "$totalCups แก้ว", font, fontBold, PdfColors.orange800),
+                _buildPdfStatBox("เบเกอรี่/เค้ก", "$totalBakery ชิ้น", font, fontBold, PdfColors.brown800),
+                _buildPdfStatBox("รับข้อเสนอ (Upsell)", "$totalUpsell ครั้ง", font, fontBold, PdfColors.purple800),
               ]),
               
               pw.SizedBox(height: 30),
@@ -102,7 +137,7 @@ class _ReportScreenState extends State<ReportScreen> {
                 headerDecoration: const pw.BoxDecoration(color: PdfColors.brown),
                 cellStyle: pw.TextStyle(font: font, fontSize: 12),
                 data: <List<String>>[
-                  <String>['อันดับ', 'ชื่อเมนู', 'จำนวน (แก้ว)'],
+                  <String>['อันดับ', 'ชื่อเมนู', 'จำนวน (แก้ว/ชิ้น)'],
                   ...top3Menus.asMap().entries.map((entry) {
                     return [(entry.key + 1).toString(), entry.value.key, entry.value.value.toString()];
                   }).toList(),
@@ -119,9 +154,9 @@ class _ReportScreenState extends State<ReportScreen> {
 
   pw.Widget _buildPdfStatBox(String title, String value, pw.Font font, pw.Font fontBold, PdfColor color) {
     return pw.Container(
-      width: 100, padding: const pw.EdgeInsets.all(8),
+      width: 150, padding: const pw.EdgeInsets.all(8),
       decoration: pw.BoxDecoration(border: pw.Border.all(color: color), borderRadius: pw.BorderRadius.circular(5), color: PdfColor(color.red, color.green, color.blue, 0.05)),
-      child: pw.Column(children: [pw.Text(title, style: pw.TextStyle(font: font, fontSize: 9)), pw.Text(value, style: pw.TextStyle(font: fontBold, fontSize: 14, color: color))])
+      child: pw.Column(children: [pw.Text(title, style: pw.TextStyle(font: font, fontSize: 10)), pw.Text(value, style: pw.TextStyle(font: fontBold, fontSize: 16, color: color))])
     );
   }
 
@@ -154,8 +189,18 @@ class _ReportScreenState extends State<ReportScreen> {
                 Container(
                   margin: const EdgeInsets.all(16),
                   padding: const EdgeInsets.all(4),
-                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(25), border: Border.all(color: Colors.grey.shade300)),
-                  child: Row(children: [_buildPeriodTab('Weekly', 'รายสัปดาห์'), _buildPeriodTab('Monthly', 'รายเดือน'), _buildPeriodTab('Yearly', 'รายปี')]),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(25),
+                    border: Border.all(color: Colors.grey.shade300),
+                  ),
+                  child: Row(
+                    children: [
+                      _buildPeriodTab('Weekly', 'รายสัปดาห์'),
+                      _buildPeriodTab('Monthly', 'รายเดือน'),
+                      _buildPeriodTab('Yearly', 'รายปี'),
+                    ],
+                  ),
                 ),
               
               if (!widget.isFullReport) const SizedBox(height: 20),
@@ -174,6 +219,9 @@ class _ReportScreenState extends State<ReportScreen> {
                     double totalDiscount = 0;
                     int totalCups = 0;
                     int totalOrders = 0;
+                    int totalBakery = 0; // 🔥 นับเค้ก
+                    int totalUpsell = 0; // 🔥 นับ Upsell
+                    
                     Map<String, int> menuPopularity = {};
                     Map<int, double> chartData = {};
 
@@ -191,10 +239,20 @@ class _ReportScreenState extends State<ReportScreen> {
                         totalCups += items.length;
 
                         for (var item in items) {
-                          // --- 🔥 จุดแก้ไข: ตัดคำในวงเล็บทิ้ง ---
                           String fullName = item.toString();
                           String cleanName = _cleanMenuName(fullName);
                           menuPopularity[cleanName] = (menuPopularity[cleanName] ?? 0) + 1;
+
+                          // --- 🔥 เช็คว่าเป็นเค้กไหม ---
+                          String category = _menuCategories[cleanName] ?? '';
+                          if (['เบเกอรี่', 'เค้ก', 'ขนม', 'ของหวาน'].contains(category)) {
+                            totalBakery++;
+                          }
+
+                          // --- 🔥 เช็คว่าเป็น Upsell ไหม ---
+                          if (fullName.contains('(Pro 20%)')) {
+                            totalUpsell++;
+                          }
                         }
 
                         Timestamp? ts = data['timestamp'];
@@ -230,31 +288,37 @@ class _ReportScreenState extends State<ReportScreen> {
                           
                           const SizedBox(height: 20),
 
-                          // สรุปยอด
+                          // แถวที่ 1: การเงิน & บิล
                           Row(
                             children: [
                               Expanded(child: _buildSummaryCard("ยอดขายสุทธิ", "฿${NumberFormat('#,##0').format(totalSales)}", Icons.monetization_on, Colors.green)),
                               const SizedBox(width: 10),
+                              Expanded(child: _buildSummaryCard("ส่วนลดรวม", "-฿${NumberFormat('#,##0').format(totalDiscount)}", Icons.discount, Colors.redAccent)),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          
+                          // แถวที่ 2: จำนวนสินค้า
+                          Row(
+                            children: [
                               Expanded(child: _buildSummaryCard("จำนวนบิล", "$totalOrders ใบ", Icons.receipt, Colors.blue)),
                               const SizedBox(width: 10),
-                              Expanded(child: _buildSummaryCard("จำนวนแก้ว", "$totalCups แก้ว", Icons.local_cafe, Colors.orange)),
+                              Expanded(child: _buildSummaryCard("เครื่องดื่มรวม", "$totalCups แก้ว", Icons.local_cafe, Colors.orange)),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          
+                          // --- 🔥 แถวที่ 3: เค้ก & Upsell (เพิ่มใหม่) ---
+                          Row(
+                            children: [
+                              Expanded(child: _buildSummaryCard("เบเกอรี่", "$totalBakery ชิ้น", Icons.cake, Colors.brown)),
+                              const SizedBox(width: 10),
+                              Expanded(child: _buildSummaryCard("รับสิทธิ์แลกซื้อเบเกอรี่", "$totalUpsell สิทธิ์", Icons.thumb_up, Colors.purple)),
                             ],
                           ),
                           
-                          // แสดงส่วนลด
-                          if (totalDiscount > 0)
-                            Container(
-                              margin: const EdgeInsets.only(top: 10),
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(color: Colors.red[50], borderRadius: BorderRadius.circular(15), border: Border.all(color: Colors.red.withOpacity(0.3))),
-                              child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                                const Row(children: [Icon(Icons.discount, color: Colors.red), SizedBox(width: 8), Text("ส่วนลดที่ให้ไปทั้งหมด", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))]),
-                                Text("- ฿${NumberFormat('#,##0.00').format(totalDiscount)}", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.red)),
-                              ]),
-                            ),
-
                           const SizedBox(height: 30),
-                          const Text("🏆 3 อันดับเมนูขายดี", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF5D4037))),
+                          const Text("3 อันดับเมนูขายดี", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF5D4037))),
                           const SizedBox(height: 15),
 
                           if (sortedMenu.isEmpty)
@@ -263,7 +327,6 @@ class _ReportScreenState extends State<ReportScreen> {
                             ListView.separated(
                               shrinkWrap: true,
                               physics: const NeverScrollableScrollPhysics(),
-                              // 🔥 จำกัดแค่ 3 รายการ
                               itemCount: sortedMenu.length > 3 ? 3 : sortedMenu.length,
                               separatorBuilder: (_,__) => const SizedBox(height: 10),
                               itemBuilder: (context, index) {
@@ -279,7 +342,15 @@ class _ReportScreenState extends State<ReportScreen> {
                             width: double.infinity,
                             height: 55,
                             child: ElevatedButton.icon(
-                              onPressed: () => _printReport(totalSales: totalSales, totalDiscount: totalDiscount, totalCups: totalCups, totalOrders: totalOrders, topMenus: sortedMenu),
+                              onPressed: () => _printReport(
+                                totalSales: totalSales, 
+                                totalDiscount: totalDiscount, 
+                                totalCups: totalCups, 
+                                totalOrders: totalOrders,
+                                totalBakery: totalBakery, // ส่งค่า
+                                totalUpsell: totalUpsell, // ส่งค่า
+                                topMenus: sortedMenu
+                              ),
                               icon: const Icon(Icons.print),
                               label: const Text("พิมพ์รายงาน (PDF)", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                               style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6F4E37), foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
@@ -299,6 +370,7 @@ class _ReportScreenState extends State<ReportScreen> {
     );
   }
 
+  // (Helper Functions เดิม)
   String _getChartTitle() {
     if (_selectedPeriod == 'Daily') return "ยอดขายรายชั่วโมง (วันนี้)";
     if (_selectedPeriod == 'Weekly') return "ยอดขายรายวัน (สัปดาห์นี้)";
@@ -387,6 +459,6 @@ class _ReportScreenState extends State<ReportScreen> {
     bool isSelected = _selectedPeriod == period;
     return Expanded(child: GestureDetector(onTap: () => setState(() => _selectedPeriod = period), child: Container(padding: const EdgeInsets.symmetric(vertical: 10), decoration: BoxDecoration(color: isSelected ? const Color(0xFF6F4E37) : Colors.transparent, borderRadius: BorderRadius.circular(25)), child: Text(label, textAlign: TextAlign.center, style: TextStyle(color: isSelected ? Colors.white : Colors.grey, fontWeight: FontWeight.bold, fontSize: 16)))));
   }
-  Widget _buildSummaryCard(String title, String value, IconData icon, Color color) { return Expanded(child: Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(15), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))]), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [Icon(icon, color: color, size: 18), const SizedBox(width: 5), Expanded(child: Text(title, style: const TextStyle(fontSize: 11, color: Colors.grey), overflow: TextOverflow.ellipsis))]), const SizedBox(height: 8), Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color))]))); }
+  Widget _buildSummaryCard(String title, String value, IconData icon, Color color) { return Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(15), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))]), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [Icon(icon, color: color, size: 18), const SizedBox(width: 5), Expanded(child: Text(title, style: const TextStyle(fontSize: 11, color: Colors.grey), overflow: TextOverflow.ellipsis))]), const SizedBox(height: 8), Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color))])); }
   Widget _buildTopMenuCard(int index, String name, int count, double percent) { return Container(margin: const EdgeInsets.only(bottom: 10), padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 5)]), child: Column(children: [Row(children: [if (index == 0) const Text("🥇 ", style: TextStyle(fontSize: 20)), if (index == 1) const Text("🥈 ", style: TextStyle(fontSize: 20)), if (index == 2) const Text("🥉 ", style: TextStyle(fontSize: 20)), Expanded(child: Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))), Text("$count แก้ว", style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFA6C48A)))]), const SizedBox(height: 8), ClipRRect(borderRadius: BorderRadius.circular(4), child: LinearProgressIndicator(value: percent, backgroundColor: Colors.grey[100], color: const Color(0xFFA6C48A), minHeight: 8))])); }
 }

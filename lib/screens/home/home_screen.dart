@@ -78,7 +78,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
           if (!mounted) return;
 
-          // 🔥 สำคัญ: ถ้า HomeScreen ไม่ได้เป็นหน้าบนสุด → ห้ามโชว์ SnackBar
           final isCurrentRoute = ModalRoute.of(context)?.isCurrent ?? false;
           if (!isCurrentRoute) return;
 
@@ -165,15 +164,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      "Home",
-                      style: TextStyle(
-                        fontSize: 32,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF5D4037),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
+                    // --- 🔥 ลบ Text("Home") ออกแล้วครับ ---
                     
                     _buildRealTimeStats(isTablet), 
                     
@@ -189,7 +180,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // --- 🔥 Header ที่ปรับแก้แล้ว ---
+  // --- Header ---
   Widget _buildHeader() {
     final user = FirebaseAuth.instance.currentUser;
 
@@ -355,10 +346,11 @@ class _HomeScreenState extends State<HomeScreen> {
       {'icon': Icons.inventory_2, 'label': 'จัดการสต๊อกวัตถุดิบ', 'page': const StockScreen()},
       {
         'icon': Icons.bar_chart, 
-        'label': 'สรุปยอดขาย     (ภาพรวม)', 
+        'label': 'สรุปยอดขาย    (ภาพรวม)', 
         'page': const ReportScreen(isFullReport: true) 
       },
       {'icon': Icons.coffee, 'label': 'Quick Menu', 'page': const QuickMenuScreen()},
+      // ปุ่มจัดการโปรโมชั่น
       {
         'icon': Icons.local_offer, 
         'label': 'จัดการโปรโมชั่น', 
@@ -370,6 +362,7 @@ class _HomeScreenState extends State<HomeScreen> {
         'label': 'จัดการเมนู', 
         'page': const ManageMenuScreen()
       },
+      // ปุ่มจอคิว
       {
         'icon': Icons.tv, 
         'label': 'จอเรียกคิว (Queue)', 
