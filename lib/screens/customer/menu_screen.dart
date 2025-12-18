@@ -19,11 +19,31 @@ class MenuScreen extends StatefulWidget {
 }
 
 class _MenuScreenState extends State<MenuScreen> {
-  final List<String> _categories = ["กาแฟ", "ชา", "นมสด", "ผลไม้","เบเกอรี่"];
-  int _selectedIndex = 0;
+  final List<String> _categories = ["กาแฟ", "ชา", "นมสด", "ผลไม้", "เบเกอรี่"];
+  String _selectedCategory = "ทั้งหมด"; 
 
-  // --- 🔥 ฟังก์ชันเปิดหน้าต่างเลือกตัวเลือก (เหมือน Admin) ---
+  // --- 🔥 ฟังก์ชันเปิดหน้าต่างเลือกตัวเลือก (แก้ไขใหม่) ---
   void _openCustomizeDialog(MenuItem menu) {
+    // 1. เช็คหมวดหมู่ที่ไม่ต้องเลือก Option (เช่น เบเกอรี่)
+    if (['เบเกอรี่', 'ขนม', 'เค้ก', 'ของหวาน', 'ผลไม้'].contains(menu.category)) {
+      
+      // เพิ่มลงตะกร้าเลย (ใส่ค่า '-' เพื่อบอกว่าไม่มี Option)
+      Provider.of<CartProvider>(context, listen: false).addItem(
+        menu, 
+        sweetness: '-', 
+        milk: '-'
+      );
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("เพิ่ม ${menu.name} แล้ว"), 
+          duration: const Duration(milliseconds: 800)
+        )
+      );
+      return; // จบการทำงาน ไม่เปิด Dialog
+    }
+
+    // 2. ถ้าเป็นหมวดอื่นๆ (เครื่องดื่ม) ให้เปิด Dialog เลือกความหวาน/นม
     showDialog(
       context: context,
       builder: (context) => ProductCustomizeDialog(
@@ -82,87 +102,129 @@ class _MenuScreenState extends State<MenuScreen> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          // Category Bar
-          Container(
-            height: 60,
-            padding: const EdgeInsets.symmetric(vertical: 10),
-            child: ListView.separated(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              scrollDirection: Axis.horizontal,
-              itemCount: _categories.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 10),
-              itemBuilder: (context, index) {
-                bool isSelected = _selectedIndex == index;
-                return GestureDetector(
-                  onTap: () => setState(() => _selectedIndex = index),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                    decoration: BoxDecoration(color: isSelected ? const Color(0xFFA6C48A) : Colors.grey[200], borderRadius: BorderRadius.circular(20)),
-                    child: Center(child: Text(_categories[index], style: TextStyle(color: isSelected ? Colors.white : Colors.black87, fontWeight: FontWeight.bold))),
-                  ),
-                );
-              },
-            ),
-          ),
+      
+      body: StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance.collection('menu_items').snapshots(),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
 
-          // Menu Grid
-          Expanded(
-            child: StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance.collection('menu_items').snapshots(),
-              builder: (context, snapshot) {
-                if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+          var docs = snapshot.data!.docs;
 
-                String currentCategory = _categories[_selectedIndex];
-                final filteredDocs = snapshot.data!.docs.where((doc) {
-                  Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-                  String itemCategory = data['category'] ?? 'กาแฟ'; 
-                  return itemCategory == currentCategory;
-                }).toList();
+          // สกัดหมวดหมู่
+          Set<String> categorySet = {"ทั้งหมด"};
+          for (var doc in docs) {
+            var data = doc.data() as Map<String, dynamic>;
+            if (data['category'] != null && data['category'].toString().isNotEmpty) {
+              categorySet.add(data['category']);
+            }
+          }
+          List<String> dynamicCategories = categorySet.toList();
+          dynamicCategories.sort((a, b) {
+             if (a == "ทั้งหมด") return -1;
+             if (b == "ทั้งหมด") return 1;
+             return a.compareTo(b);
+          });
 
-                if (filteredDocs.isEmpty) {
-                  return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [const Icon(Icons.menu_book, size: 60, color: Colors.grey), const SizedBox(height: 10), Text("ไม่พบเมนูในหมวด $currentCategory", style: const TextStyle(color: Colors.grey))]));
-                }
+          // กรองสินค้า
+          var filteredDocs = docs;
+          if (_selectedCategory != "ทั้งหมด") {
+            filteredDocs = docs.where((doc) {
+               var data = doc.data() as Map<String, dynamic>;
+               return (data['category'] ?? 'อื่นๆ') == _selectedCategory;
+            }).toList();
+          }
 
-                final menus = filteredDocs.map((doc) {
-                  Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-                  
-                  List<RecipeItem> recipeList = [];
-                  if (data['recipe'] != null && data['recipe'] is List) {
-                    for (var item in data['recipe']) {
-                      if (item is Map) {
-                        recipeList.add(RecipeItem.fromMap(Map<String, dynamic>.from(item)));
-                      }
-                    }
-                  }
+          return Column(
+            children: [
+              // Category Bar
+              Container(
+                height: 60,
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                color: Colors.white,
+                child: ListView.separated(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  scrollDirection: Axis.horizontal,
+                  itemCount: dynamicCategories.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 10),
+                  itemBuilder: (context, index) {
+                    String cat = dynamicCategories[index];
+                    bool isSelected = _selectedCategory == cat;
+                    return GestureDetector(
+                      onTap: () => setState(() => _selectedCategory = cat),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: isSelected ? const Color(0xFFA6C48A) : Colors.grey[200],
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Center(
+                          child: Text(
+                            cat,
+                            style: TextStyle(
+                              color: isSelected ? Colors.white : Colors.black87,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
 
-                  return MenuItem(
-                    id: doc.id,
-                    name: data['name'] ?? 'Unknown',
-                    price: (data['price'] ?? 0).toDouble(),
-                    category: data['category'] ?? 'อื่นๆ',
-                    imageUrl: data['imageUrl'] ?? '',
-                    recipe: recipeList,
-                    isAvailable: data['isAvailable'] ?? true, 
-                  );
-                }).toList();
+              // Menu Grid
+              Expanded(
+                child: filteredDocs.isEmpty
+                  ? Center(child: Text("ไม่พบเมนูในหมวด '$_selectedCategory'", style: const TextStyle(color: Colors.grey)))
+                  : GridView.builder(
+                      padding: const EdgeInsets.all(16),
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 2,
+                        childAspectRatio: 0.75,
+                        crossAxisSpacing: 16,
+                        mainAxisSpacing: 16,
+                      ),
+                      itemCount: filteredDocs.length,
+                      itemBuilder: (ctx, i) {
+                        var doc = filteredDocs[i];
+                        var data = doc.data() as Map<String, dynamic>;
+                        List<RecipeItem> recipeList = [];
+                        if (data['recipe'] != null && data['recipe'] is List) {
+                          for (var item in data['recipe']) {
+                            if (item is Map) {
+                              recipeList.add(RecipeItem.fromMap(Map<String, dynamic>.from(item)));
+                            }
+                          }
+                        }
 
-                return GridView.builder(
-                  padding: const EdgeInsets.all(16),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, childAspectRatio: 0.75, crossAxisSpacing: 16, mainAxisSpacing: 16),
-                  itemCount: menus.length,
-                  itemBuilder: (ctx, i) => _buildMenuCard(context, menus[i]),
-                );
-              },
-            ),
-          ),
-        ],
+                        MenuItem menu = MenuItem(
+                          id: doc.id,
+                          name: data['name'] ?? 'ไม่ระบุชื่อ',
+                          price: (data['price'] ?? 0).toDouble(),
+                          category: data['category'] ?? 'อื่นๆ',
+                          imageUrl: data['imageUrl'] ?? '',
+                          recipe: recipeList,
+                          isAvailable: data['isAvailable'] ?? true,
+                        );
+
+                        return _buildMenuCard(context, menu);
+                      },
+                    ),
+              ),
+            ],
+          );
+        },
       ),
+      
       floatingActionButton: Consumer<CartProvider>(
         builder: (context, cart, child) {
           if (cart.itemCount == 0) return const SizedBox();
-          return FloatingActionButton.extended(onPressed: () => _goToCheckout(context), label: Text("ตะกร้า ฿${cart.totalAmount.toStringAsFixed(0)}"), icon: const Icon(Icons.shopping_cart), backgroundColor: const Color(0xFFA6C48A));
+          return FloatingActionButton.extended(
+            onPressed: () => _goToCheckout(context),
+            label: Text("ตะกร้า ฿${cart.totalAmount.toStringAsFixed(0)}"),
+            icon: const Icon(Icons.shopping_cart),
+            backgroundColor: const Color(0xFFA6C48A),
+          );
         },
       ),
     );
@@ -216,7 +278,7 @@ class _MenuScreenState extends State<MenuScreen> {
             ),
             const SizedBox(height: 10),
             
-            Text(menu.name, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: menu.isAvailable ? Colors.black : Colors.grey), maxLines: 1),
+            Text(menu.name, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: menu.isAvailable ? Colors.black : Colors.grey), maxLines: 1, overflow: TextOverflow.ellipsis),
             
             Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
               Text("฿${menu.price.toStringAsFixed(0)}", style: const TextStyle(color: Colors.grey)),

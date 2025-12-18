@@ -6,7 +6,6 @@ import '../../models/model_menu.dart';
 import '../../providers/cart_provider.dart';
 import 'checkout_screen.dart'; 
 import '../../screens/admin/add_menu_screen.dart';
-// 🔥 Import หน้าต่างเลือก Option
 import '../common/product_customize_dialog.dart';
 
 class QuickMenuScreen extends StatefulWidget {
@@ -17,17 +16,39 @@ class QuickMenuScreen extends StatefulWidget {
 }
 
 class _QuickMenuScreenState extends State<QuickMenuScreen> {
-  final List<String> _categories = ["กาแฟ", "ชา", "นมสด", "ผลไม้","เบเกอรี่"];
+  // เพิ่มหมวด "เบเกอรี่" เข้าไปในรายการ
+  final List<String> _categories = ["กาแฟ", "ชา", "นมสด", "ผลไม้", "เบเกอรี่"];
   int _selectedIndex = 0;
 
   void _openCustomizeDialog(MenuItem menu) {
+    // --- 🔥 Logic เช็คหมวดหมู่ (เหมือนฝั่งลูกค้า) ---
+    // ถ้าเป็น เบเกอรี่ หรือ ของหวาน ไม่ต้องถามความหวาน/นม
+    if (['เบเกอรี่', 'ขนม', 'เค้ก', 'ของหวาน', 'ผลไม้'].contains(menu.category)) {
+      
+      // เพิ่มลงตะกร้าทันที (ระบุ option เป็น '-')
+      Provider.of<CartProvider>(context, listen: false).addItem(
+        menu, 
+        sweetness: '-', 
+        milk: '-'
+      );
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("เพิ่ม ${menu.name} แล้ว"), 
+          duration: const Duration(milliseconds: 500) // ลดเวลาให้เร็วขึ้นสำหรับ Admin
+        )
+      );
+      return; 
+    }
+
+    // ถ้าเป็นเครื่องดื่ม ค่อยโชว์ Popup
     showDialog(
       context: context,
       builder: (context) => ProductCustomizeDialog(
         menu: menu,
         onConfirm: (sweetness, milk) {
           Provider.of<CartProvider>(context, listen: false).addItem(menu, sweetness: sweetness, milk: milk);
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("เพิ่ม ${menu.name} ($sweetness, $milk) แล้ว"), duration: const Duration(milliseconds: 800)));
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("เพิ่ม ${menu.name} ($sweetness, $milk) แล้ว"), duration: const Duration(milliseconds: 500)));
         },
       ),
     );
@@ -106,27 +127,37 @@ class _QuickMenuScreenState extends State<QuickMenuScreen> {
               builder: (context, snapshot) {
                 if (snapshot.hasError) return Center(child: Text("Error: ${snapshot.error}"));
                 if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Text("ไม่มีสินค้าในเมนู"));
+                
+                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                  return const Center(child: Text("ไม่มีสินค้าในเมนู"));
+                }
 
                 String currentCategory = _categories[_selectedIndex];
                 final filteredDocs = snapshot.data!.docs.where((doc) {
-                  final data = doc.data() as Map<String, dynamic>;
-                  return (data['category'] ?? 'กาแฟ') == currentCategory;
+                  // ใช้ try-catch เพื่อความปลอดภัย
+                  try {
+                    final data = doc.data() as Map<String, dynamic>;
+                    return (data['category'] ?? 'กาแฟ') == currentCategory;
+                  } catch (e) {
+                    return false;
+                  }
                 }).toList();
 
                 if (filteredDocs.isEmpty) return Center(child: Text("ไม่มีสินค้าในหมวด $currentCategory"));
 
                 final menus = filteredDocs.map((doc) {
                   Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+                  
                   List<RecipeItem> recipeList = [];
                   if (data['recipe'] != null && data['recipe'] is List) {
                     for (var item in data['recipe']) {
                       if (item is Map) recipeList.add(RecipeItem.fromMap(Map<String, dynamic>.from(item)));
                     }
                   }
+
                   return MenuItem(
                     id: doc.id,
-                    name: data['name'] ?? 'ไม่ระบุชื่อ', 
+                    name: data.containsKey('name') ? data['name'] : 'ไม่ระบุชื่อ', 
                     price: (data['price'] ?? 0).toDouble(),
                     category: data['category'] ?? 'อื่นๆ',
                     imageUrl: data['imageUrl'] ?? '',
@@ -158,7 +189,6 @@ class _QuickMenuScreenState extends State<QuickMenuScreen> {
 
   Widget _buildProductCard(BuildContext context, MenuItem menu) {
     return GestureDetector(
-      // --- 🔥 กดที่การ์ดเพื่อเลือก Option ---
       onTap: menu.isAvailable ? () => _openCustomizeDialog(menu) : null,
       child: Container(
         decoration: BoxDecoration(
@@ -217,10 +247,9 @@ class _QuickMenuScreenState extends State<QuickMenuScreen> {
                 children: [
                   Text("฿${menu.price.toStringAsFixed(0)}", style: const TextStyle(color: Colors.grey)),
                   
-                  // --- ปุ่มบวก (Add) ---
                   if (menu.isAvailable)
                     InkWell(
-                      onTap: () => _openCustomizeDialog(menu), // กดบวกก็เปิด Option เหมือนกัน
+                      onTap: () => _openCustomizeDialog(menu), 
                       child: Container(
                         padding: const EdgeInsets.all(6),
                         decoration: const BoxDecoration(color: Color(0xFFA6C48A), shape: BoxShape.circle),
