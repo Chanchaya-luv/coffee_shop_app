@@ -5,7 +5,6 @@ import 'package:intl/intl.dart';
 class NotificationScreen extends StatelessWidget {
   const NotificationScreen({super.key});
 
-  // --- ฟังก์ชันกดเคลียร์ (บันทึกเวลาปัจจุบันลง Database) ---
   Future<void> _clearNotifications(BuildContext context) async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -20,7 +19,6 @@ class NotificationScreen extends StatelessWidget {
     );
 
     if (confirm == true) {
-      // บันทึกเวลาปัจจุบันลง metadata
       await FirebaseFirestore.instance.collection('metadata').doc('notifications').set({
         'lastClearedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
@@ -42,7 +40,6 @@ class NotificationScreen extends StatelessWidget {
         centerTitle: true,
         elevation: 0,
         actions: [
-          // --- 🔥 ปุ่มถังขยะ (เคลียร์แจ้งเตือน) ---
           IconButton(
             icon: const Icon(Icons.delete_sweep),
             tooltip: "ล้างการแจ้งเตือน",
@@ -50,7 +47,6 @@ class NotificationScreen extends StatelessWidget {
           ),
         ],
       ),
-      // 1. ดึงเวลาที่เคลียร์ล่าสุดมาก่อน
       body: StreamBuilder<DocumentSnapshot>(
         stream: FirebaseFirestore.instance.collection('metadata').doc('notifications').snapshots(),
         builder: (context, metaSnapshot) {
@@ -65,15 +61,14 @@ class NotificationScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // --- ส่วนที่ 1: แจ้งเตือนวัตถุดิบ (อันนี้ไม่ควรเคลียร์ เพราะเป็นสถานะจริง) ---
                 _buildSectionHeader("⚠️ วัตถุดิบที่ต้องเติม (Low Stock)", Colors.red[800]!),
                 _buildLowStockList(),
 
                 const SizedBox(height: 10),
 
-                // --- ส่วนที่ 2: ไทม์ไลน์กิจกรรม (เคลียร์ได้) ---
-                _buildSectionHeader("🕒 กิจกรรมล่าสุด (Money & Orders)", const Color(0xFF5D4037)),
-                _buildActivityTimeline(lastClearedAt), // ส่งเวลาไปกรอง
+                _buildSectionHeader("🕒 กิจกรรมล่าสุด (Timeline)", const Color(0xFF5D4037)),
+                // --- 🔥 ใช้ Widget Timeline แบบรวม ---
+                _buildUnifiedTimeline(lastClearedAt), 
               ],
             ),
           );
@@ -95,7 +90,6 @@ class NotificationScreen extends StatelessWidget {
     );
   }
 
-  // 1. Stream วัตถุดิบ (เหมือนเดิม)
   Widget _buildLowStockList() {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance.collection('ingredients').snapshots(),
@@ -154,122 +148,191 @@ class NotificationScreen extends StatelessWidget {
     );
   }
 
-  // 2. Stream กิจกรรม (เพิ่ม Logic การกรองเวลา)
-  Widget _buildActivityTimeline(Timestamp? lastClearedAt) {
+  // --- 🔥 2. Widget Timeline แบบรวม (Income + Expense) ---
+  Widget _buildUnifiedTimeline(Timestamp? lastClearedAt) {
+    // ใช้ StreamBuilder ซ้อนกันเพื่อดึงข้อมูลจาก 2 Collections
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance.collection('orders')
-          .orderBy('timestamp', descending: true)
-          .limit(50) // ดึงมาเยอะหน่อย แล้วค่อยกรองออก
-          .snapshots(),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) return const Center(child: Padding(padding: EdgeInsets.all(20.0), child: CircularProgressIndicator()));
-        
-        // --- 🔥 กรองข้อมูล: เอาเฉพาะที่เกิด "หลัง" จากเวลาที่กดเคลียร์ ---
-        var docs = snapshot.data!.docs.where((doc) {
-          var data = doc.data() as Map<String, dynamic>;
-          if (data['timestamp'] == null) return false;
-          
-          // ถ้าเคยกดเคลียร์ ให้เช็คว่าเก่าน่ากว่าเวลาที่เคลียร์ไหม
-          if (lastClearedAt != null) {
-            Timestamp orderTime = data['timestamp'];
-            // ถ้าเวลาของออเดอร์ น้อยกว่า เวลาที่กดเคลียร์ -> ซ่อน
-            if (orderTime.compareTo(lastClearedAt) <= 0) return false;
-          }
-          return true;
-        }).toList();
-
-        if (docs.isEmpty) {
-          return const Center(child: Padding(padding: EdgeInsets.all(20.0), child: Text("ไม่มีกิจกรรมใหม่", style: TextStyle(color: Colors.grey))));
-        }
-
-        return ListView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          itemCount: docs.length,
-          itemBuilder: (context, index) {
-            var doc = docs[index];
-            var data = doc.data() as Map<String, dynamic>;
-            
-            String orderId = data['orderId'] ?? '-';
-            String tableNo = data['tableNumber'] ?? '-';
-            double totalPrice = (data['totalPrice'] ?? 0).toDouble();
-            String method = data['paymentMethod'] ?? 'Cash';
-            
-            String timeStr = "เมื่อสักครู่";
-            if (data['timestamp'] != null) {
-              Timestamp ts = data['timestamp'];
-              timeStr = DateFormat('dd/MM HH:mm').format(ts.toDate());
+      stream: FirebaseFirestore.instance.collection('orders').orderBy('timestamp', descending: true).limit(30).snapshots(),
+      builder: (context, orderSnapshot) {
+        return StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance.collection('expenses').orderBy('date', descending: true).limit(30).snapshots(),
+          builder: (context, expenseSnapshot) {
+            if (!orderSnapshot.hasData || !expenseSnapshot.hasData) {
+              return const Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator()));
             }
 
-            bool isQR = method == 'QR';
-            Color iconColor = isQR ? Colors.blue : Colors.green;
-            IconData iconData = isQR ? Icons.qr_code_2 : Icons.attach_money;
+            // 1. แปลงข้อมูล Order
+            List<Map<String, dynamic>> activities = [];
+            for (var doc in orderSnapshot.data!.docs) {
+              var data = doc.data() as Map<String, dynamic>;
+              data['type'] = 'order'; // ระบุประเภท
+              data['sortTime'] = data['timestamp']; // ใช้ timestamp ในการเรียง
+              activities.add(data);
+            }
 
-            return Container(
-              margin: const EdgeInsets.only(bottom: 15),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Column(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: iconColor.withOpacity(0.1),
-                          shape: BoxShape.circle,
-                          border: Border.all(color: iconColor.withOpacity(0.5)),
-                        ),
-                        child: Icon(iconData, size: 18, color: iconColor),
-                      ),
-                      if (index != docs.length - 1)
-                        Container(width: 2, height: 40, color: Colors.grey[200]),
-                    ],
+            // 2. แปลงข้อมูล Expense
+            for (var doc in expenseSnapshot.data!.docs) {
+              var data = doc.data() as Map<String, dynamic>;
+              data['type'] = 'expense';
+              data['sortTime'] = data['date']; // ใช้ date ในการเรียง
+              activities.add(data);
+            }
+
+            // 3. กรองและเรียงลำดับ
+            var filteredActivities = activities.where((data) {
+              Timestamp? ts = data['sortTime'];
+              if (ts == null) return false;
+              if (lastClearedAt != null && ts.compareTo(lastClearedAt) <= 0) return false;
+              return true;
+            }).toList();
+
+            // เรียงใหม่สุดขึ้นก่อน
+            filteredActivities.sort((a, b) {
+              Timestamp t1 = a['sortTime'];
+              Timestamp t2 = b['sortTime'];
+              return t2.compareTo(t1);
+            });
+
+            if (filteredActivities.isEmpty) {
+               return const Center(child: Padding(padding: EdgeInsets.all(20), child: Text("ไม่มีกิจกรรมใหม่", style: TextStyle(color: Colors.grey))));
+            }
+
+            // 4. แสดงผล
+            return ListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              itemCount: filteredActivities.length,
+              itemBuilder: (context, index) {
+                var data = filteredActivities[index];
+                bool isLast = index == filteredActivities.length - 1;
+                
+                if (data['type'] == 'order') {
+                  return _buildOrderTile(data, isLast);
+                } else {
+                  return _buildExpenseTile(data, isLast);
+                }
+              },
+            );
+          }
+        );
+      }
+    );
+  }
+
+  // Widget แสดงรายการ Order (เงินเข้า)
+  Widget _buildOrderTile(Map<String, dynamic> data, bool isLast) {
+    String orderId = data['orderId'] ?? '-';
+    String tableNo = data['tableNumber'] ?? '-';
+    double totalPrice = (data['totalPrice'] ?? 0).toDouble();
+    String method = data['paymentMethod'] ?? 'Cash';
+    Timestamp ts = data['timestamp'];
+    String timeStr = DateFormat('dd/MM HH:mm').format(ts.toDate());
+
+    bool isQR = method == 'QR';
+    Color iconColor = isQR ? Colors.blue : Colors.green;
+    IconData iconData = isQR ? Icons.qr_code_2 : Icons.attach_money;
+
+    return _buildTimelineItem(
+      icon: iconData,
+      iconColor: iconColor,
+      timeStr: timeStr,
+      title: "ได้รับเงินเข้า (Order #$orderId)",
+      amount: "+฿${NumberFormat('#,##0').format(totalPrice)}",
+      amountColor: iconColor,
+      subtitle: "โต๊ะ: $tableNo | ${isQR ? 'PromptPay' : 'เงินสด'}",
+      isLast: isLast,
+    );
+  }
+
+  // Widget แสดงรายการ Expense (เงินออก)
+  Widget _buildExpenseTile(Map<String, dynamic> data, bool isLast) {
+    String title = data['title'] ?? 'รายจ่ายทั่วไป';
+    double amount = (data['amount'] ?? 0).toDouble();
+    Timestamp ts = data['date'];
+    String timeStr = DateFormat('dd/MM HH:mm').format(ts.toDate());
+
+    return _buildTimelineItem(
+      icon: Icons.money_off,
+      iconColor: Colors.orange,
+      timeStr: timeStr,
+      title: "รายจ่าย: $title",
+      amount: "-฿${NumberFormat('#,##0').format(amount)}",
+      amountColor: Colors.red,
+      subtitle: "บันทึกโดย Admin",
+      isLast: isLast,
+    );
+  }
+
+  // Template สำหรับ Timeline Row
+  Widget _buildTimelineItem({
+    required IconData icon,
+    required Color iconColor,
+    required String timeStr,
+    required String title,
+    required String amount,
+    required Color amountColor,
+    required String subtitle,
+    required bool isLast,
+  }) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 0), // ระยะห่างจัดการโดย Column ภายใน
+      child: IntrinsicHeight( // ให้เส้นสูงเท่าเนื้อหา
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Column(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: iconColor.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: iconColor.withOpacity(0.5)),
                   ),
-                  const SizedBox(width: 15),
-                  
-                  Expanded(
-                    child: Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 5, offset: const Offset(0, 2))],
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                  child: Icon(icon, size: 18, color: iconColor),
+                ),
+                if (!isLast)
+                  Expanded(child: Container(width: 2, color: Colors.grey[200])),
+              ],
+            ),
+            const SizedBox(width: 15),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 15),
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 5, offset: const Offset(0, 2))],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text("ได้รับเงินเข้า (Order #$orderId)", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                              Text(timeStr, style: const TextStyle(fontSize: 10, color: Colors.grey)),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          Row(
-                            children: [
-                              Text("฿${NumberFormat('#,##0').format(totalPrice)}", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: iconColor)),
-                              const SizedBox(width: 5),
-                              Text("ผ่านช่องทาง ${isQR ? 'QR PromptPay' : 'เงินสด'}", style: TextStyle(fontSize: 12, color: Colors.grey[600])),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(color: const Color(0xFF6F4E37).withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
-                            child: Text("โต๊ะ: $tableNo", style: const TextStyle(fontSize: 10, color: Color(0xFF6F4E37), fontWeight: FontWeight.bold)),
-                          )
+                          Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14), overflow: TextOverflow.ellipsis)),
+                          Text(timeStr, style: const TextStyle(fontSize: 10, color: Colors.grey)),
                         ],
                       ),
-                    ),
+                      const SizedBox(height: 4),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(amount, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: amountColor)),
+                          Text(subtitle, style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                        ],
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
-            );
-          },
-        );
-      },
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
