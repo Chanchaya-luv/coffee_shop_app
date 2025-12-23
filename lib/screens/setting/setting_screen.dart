@@ -18,6 +18,7 @@ import 'store_profile_screen.dart';
 import 'generic_settings_screen.dart';
 import 'help_center_screen.dart';
 import '../admin/promotion_management_screen.dart';
+import '../admin/expense_screen.dart';
 
 class SettingScreen extends StatefulWidget {
   const SettingScreen({super.key});
@@ -155,11 +156,13 @@ class _SettingScreenState extends State<SettingScreen> {
                       ),
                       
                       _buildSettingItem(Icons.history, "ประวัติออเดอร์", onTap: () => _navigate(context, const OrderHistoryScreen())),
-                      
+
                       _buildSettingItem(
-                        Icons.payment, "การตั้งค่าการชำระเงิน", 
-                        onTap: () => _navigate(context, PaymentSettingsScreen(isReadOnly: !_canEdit))
-                      ),
+                        Icons.monetization_on_outlined, 
+                        "บันทึกรายจ่าย", 
+                        onTap: () => _navigate(context, const ExpenseScreen())),
+                      
+                      _buildSettingItem(Icons.payment, "การตั้งค่าการชำระเงิน", onTap: () => _navigate(context, PaymentSettingsScreen(isReadOnly: !_canEdit))),
                       
                       _buildSettingItem(Icons.notifications_active_outlined, "การแจ้งเตือน", onTap: () => _navigate(context, const NotificationScreen())),
                       _buildSettingItem(Icons.help_outline, "ศูนย์ช่วยเหลือ", showDivider: false, onTap: () => _navigate(context, const HelpCenterScreen())),

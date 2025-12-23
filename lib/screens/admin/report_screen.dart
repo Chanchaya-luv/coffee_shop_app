@@ -445,7 +445,7 @@ class _ReportScreenState extends State<ReportScreen> {
                                 children: [
                                   Expanded(child: _buildSummaryCard("เบเกอรี่/เค้ก", "$totalBakery ชิ้น", Icons.cake, Colors.brown)),
                                   const SizedBox(width: 10),
-                                  Expanded(child: _buildSummaryCard("รับข้อเสนอ", "$totalUpsell ครั้ง", Icons.thumb_up, Colors.purple)),
+                                  Expanded(child: _buildSummaryCard("รับสิทธิ์แลกซื้อ", "$totalUpsell สิทธิ์", Icons.thumb_up, Colors.purple)),
                                 ],
                               ),
                               
