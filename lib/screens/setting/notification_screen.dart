@@ -251,6 +251,9 @@ class NotificationScreen extends StatelessWidget {
     double amount = (data['amount'] ?? 0).toDouble();
     Timestamp ts = data['date'];
     String timeStr = DateFormat('dd/MM HH:mm').format(ts.toDate());
+    
+    // --- 🔥 แก้ไข: ดึงชื่อคนบันทึกมาแสดง ---
+    String recorder = data['recorder'] ?? 'Admin';
 
     return _buildTimelineItem(
       icon: Icons.money_off,
@@ -259,7 +262,7 @@ class NotificationScreen extends StatelessWidget {
       title: "รายจ่าย: $title",
       amount: "-฿${NumberFormat('#,##0').format(amount)}",
       amountColor: Colors.red,
-      subtitle: "บันทึกโดย Admin",
+      subtitle: "บันทึกโดย $recorder", // ✅ แสดงชื่อจริง
       isLast: isLast,
     );
   }

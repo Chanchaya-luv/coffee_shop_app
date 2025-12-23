@@ -311,7 +311,7 @@ class _ReportScreenState extends State<ReportScreen> {
             Scaffold(
               backgroundColor: const Color(0xFFF9F9F9),
               appBar: AppBar(
-                title: Text(widget.isFullReport ? "สรุปยอดขาย (ภาพรวม)" : "รายงานวันนี้ (Today)", style: const TextStyle(fontWeight: FontWeight.bold)),
+                title: Text(widget.isFullReport ? "สรุปยอดขาย (ภาพรวม)" : "ยอดขายวันนี้ (Today)", style: const TextStyle(fontWeight: FontWeight.bold)),
                 backgroundColor: const Color(0xFF6F4E37),
                 foregroundColor: Colors.white,
                 centerTitle: true,

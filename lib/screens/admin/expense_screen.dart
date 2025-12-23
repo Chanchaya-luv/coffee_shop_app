@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
-import 'package:intl/date_symbol_data_local.dart'; // เพิ่ม Import นี้
+import 'package:intl/date_symbol_data_local.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class ExpenseScreen extends StatefulWidget {
   const ExpenseScreen({super.key});
@@ -14,16 +15,47 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
   final _titleCtrl = TextEditingController();
   final _amountCtrl = TextEditingController();
   
-  // --- 🔥 เพิ่มตัวแปรวันที่เลือก ---
   DateTime _selectedDate = DateTime.now();
+  
+  // --- 🔥 ตัวแปรเก็บชื่อผู้ใช้ปัจจุบัน ---
+  String _currentUserName = "กำลังโหลด...";
 
   @override
   void initState() {
     super.initState();
     initializeDateFormatting('th', null);
+    _loadCurrentUser(); // ดึงชื่อทันทีที่เปิดหน้านี้
   }
 
-  // ฟังก์ชันเลือกวันที่
+  // --- 🔥 ฟังก์ชันดึงชื่อผู้ใช้ ---
+  Future<void> _loadCurrentUser() async {
+    User? user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      try {
+        var doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+        if (doc.exists) {
+          if (mounted) {
+            setState(() {
+              _currentUserName = doc.data()?['name'] ?? 'พนักงาน';
+            });
+          }
+        } else {
+          // ถ้าไม่มีเอกสารใน database ให้ใช้ชื่อจาก Auth หรือ Admin
+          if (mounted) {
+            setState(() {
+              _currentUserName = user.displayName ?? 'Admin';
+            });
+          }
+        }
+      } catch (e) {
+        print("Error fetching user: $e");
+        if (mounted) setState(() => _currentUserName = "Admin");
+      }
+    } else {
+      if (mounted) setState(() => _currentUserName = "Unknown");
+    }
+  }
+
   Future<void> _pickDate() async {
     final DateTime? picked = await showDatePicker(
       context: context,
@@ -53,7 +85,24 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
         title: const Text("บันทึกรายจ่ายใหม่"),
         content: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // --- 🔥 แสดงชื่อผู้บันทึกให้เห็นชัดๆ ---
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.grey[200],
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.person, size: 16, color: Colors.grey),
+                  const SizedBox(width: 5),
+                  Text("ผู้บันทึก: $_currentUserName", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black54)),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
             TextField(controller: _titleCtrl, decoration: const InputDecoration(labelText: "รายการ (เช่น ซื้อน้ำแข็ง)")),
             TextField(controller: _amountCtrl, decoration: const InputDecoration(labelText: "จำนวนเงิน (บาท)"), keyboardType: const TextInputType.numberWithOptions(decimal: true)),
           ],
@@ -64,11 +113,12 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
             style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6F4E37), foregroundColor: Colors.white),
             onPressed: () async {
               if (_titleCtrl.text.isNotEmpty && _amountCtrl.text.isNotEmpty) {
-                // บันทึกโดยใช้วันที่ปัจจุบัน (Timestamp)
+                // บันทึกชื่อ _currentUserName ลงไปด้วย
                 await FirebaseFirestore.instance.collection('expenses').add({
                   'title': _titleCtrl.text.trim(),
                   'amount': double.parse(_amountCtrl.text.trim()),
                   'date': FieldValue.serverTimestamp(),
+                  'recorder': _currentUserName, // ✅ ใช้ชื่อที่ดึงมาได้
                 });
                 _titleCtrl.clear();
                 _amountCtrl.clear();
@@ -84,7 +134,6 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // เตรียมช่วงเวลาสำหรับกรอง (เริ่มวัน - จบวัน)
     DateTime startOfDay = DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day);
     DateTime endOfDay = DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day, 23, 59, 59);
     String dateLabel = DateFormat('d MMMM yyyy', 'th').format(_selectedDate);
@@ -98,7 +147,7 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
       ),
       body: Column(
         children: [
-          // --- 🔥 ส่วนเลือกวันที่ ---
+          // ส่วนเลือกวันที่
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -130,7 +179,7 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
                 if (snapshot.hasError) return const Center(child: Text("เกิดข้อผิดพลาด"));
                 if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
 
-                // --- 🔥 กรองข้อมูลเฉพาะวันที่เลือก ---
+                // กรองข้อมูลเฉพาะวันที่เลือก
                 var docs = snapshot.data!.docs.where((doc) {
                   var data = doc.data() as Map<String, dynamic>;
                   if (data['date'] == null) return false;
@@ -151,7 +200,6 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
                   );
                 }
 
-                // คำนวณยอดรวมของวันนั้น
                 double totalAmount = docs.fold(0, (sum, doc) => sum + (doc['amount'] ?? 0));
 
                 return Column(
@@ -166,6 +214,8 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
                           double amount = (data['amount'] ?? 0).toDouble();
                           Timestamp? ts = data['date'];
                           String timeStr = ts != null ? DateFormat('HH:mm').format(ts.toDate()) : '-';
+                          // ดึงชื่อมาแสดง
+                          String recorderName = data['recorder'] ?? 'Admin'; 
 
                           return Card(
                             margin: const EdgeInsets.only(bottom: 10),
@@ -177,7 +227,18 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
                                 child: const Icon(Icons.remove, color: Colors.red),
                               ),
                               title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-                              subtitle: Text("เวลา: $timeStr"),
+                              subtitle: Row(
+                                children: [
+                                  Text("เวลา: $timeStr"),
+                                  const SizedBox(width: 10),
+                                  // --- 🔥 แสดงชื่อคนบันทึกตรงนี้ ---
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(color: Colors.grey[200], borderRadius: BorderRadius.circular(4)),
+                                    child: Text(recorderName, style: const TextStyle(fontSize: 10, color: Colors.black54)),
+                                  )
+                                ],
+                              ),
                               trailing: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
