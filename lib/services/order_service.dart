@@ -1,23 +1,20 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
-// Import CartProvider เพื่อใช้ Class CartItem
 import '../providers/cart_provider.dart'; 
 
 class OrderService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  // --- 🔥 แก้ตรงนี้: รับ List<CartItem> แทน MenuItem ---
   Future<String> placeOrder(List<CartItem> cartItems, String tableNumber, String paymentMethod, String branchName, double discount) async {
     return await _db.runTransaction((transaction) async {
       
-      // ... (Phase 1: อ่านข้อมูล - เหมือนเดิม) ...
+      // --- Phase 1: อ่านข้อมูล (Reads) ---
       DocumentReference counterRef = _db.collection('metadata').doc('order_counter');
       DocumentSnapshot counterSnapshot = await transaction.get(counterRef);
 
       Map<String, DocumentSnapshot> ingredientSnapshots = {};
       Set<String> ingredientIdsToCheck = {};
       
-      // วนลูป CartItem เพื่อหาสูตร
       for (var cartItem in cartItems) {
         if (cartItem.menu.recipe.isNotEmpty) {
           for (var recipeItem in cartItem.menu.recipe) {
@@ -32,7 +29,7 @@ class OrderService {
         ingredientSnapshots[ingId] = snap;
       }
 
-      // ... (Phase 2: คำนวณสต๊อก - เหมือนเดิม) ...
+      // --- Phase 2: คำนวณและเขียนข้อมูล (Writes) ---
       Map<String, double> stockUpdates = {}; 
       ingredientSnapshots.forEach((id, snap) {
         if (snap.exists) {
@@ -41,9 +38,8 @@ class OrderService {
         }
       });
 
-      // ตัดสต๊อก (วนลูปตามจำนวนแก้ว)
+      // ตัดสต๊อก
       for (var cartItem in cartItems) {
-        // ทำซ้ำตามจำนวน quantity
         for (int i = 0; i < cartItem.quantity; i++) {
            for (var recipeItem in cartItem.menu.recipe) {
               String id = recipeItem.ingredientId;
@@ -54,13 +50,13 @@ class OrderService {
         }
       }
       
-      // บันทึกสต๊อก
+      // บันทึกสต๊อกใหม่
       stockUpdates.forEach((id, newStock) {
         DocumentReference ref = _db.collection('ingredients').doc(id);
         transaction.update(ref, {'currentStock': newStock});
       });
 
-      // ... (คำนวณราคาและ ID - เหมือนเดิม) ...
+      // สร้างเลข Order
       int currentCount = 0;
       String lastDate = '';
       String todayStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
@@ -74,22 +70,18 @@ class OrderService {
       int newCount = (lastDate == todayStr) ? currentCount + 1 : 1;
       String runningId = newCount.toString().padLeft(4, '0');
 
-      // --- 🔥 สร้างรายชื่อเมนูพร้อม Option (สำคัญ!) ---
+      // บันทึกออเดอร์
+      DocumentReference orderRef = _db.collection('orders').doc(runningId);
       List<String> itemNames = [];
       double totalPrice = 0;
 
       for (var cartItem in cartItems) {
-        // ราคารวม
         totalPrice += (cartItem.menu.price * cartItem.quantity);
-        
-        // สร้างชื่อ เช่น "ลาเต้ (หวาน 50%, นมโอ๊ต) x2"
-        // หรือจะแยกเป็นบรรทัดก็ได้
         for (int i = 0; i < cartItem.quantity; i++) {
            String detail = "${cartItem.menu.name}";
-           // ถ้ามี Option ให้วงเล็บต่อท้าย
-           if (cartItem.sweetness != 'ปกติ (100%)' || cartItem.milk != 'นมวัว') {
-              detail += " (${cartItem.sweetness}, ${cartItem.milk})";
-           }
+           bool showOption = (cartItem.sweetness != '-' && cartItem.sweetness != 'ปกติ (100%)') ||
+                             (cartItem.milk != '-' && cartItem.milk != 'นมวัว');
+           if (showOption) { detail += " (${cartItem.sweetness}, ${cartItem.milk})"; }
            itemNames.add(detail);
         }
       }
@@ -97,12 +89,10 @@ class OrderService {
       double netPrice = totalPrice - discount;
       if (netPrice < 0) netPrice = 0;
 
-      // บันทึกออเดอร์
-      DocumentReference orderRef = _db.collection('orders').doc(runningId);
       transaction.set(orderRef, {
         'orderId': runningId,       
         'tableNumber': tableNumber, 
-        'items': itemNames,         // รายชื่อพร้อม Option
+        'items': itemNames,         
         'totalPrice': netPrice,     
         'originalPrice': totalPrice,
         'discount': discount,       
@@ -121,22 +111,59 @@ class OrderService {
 
       return runningId; 
     }).then((orderId) {
-      // --- 🔥 เพิ่มส่วนนี้: บันทึก Log การใช้วัตถุดิบ ---
+      // เรียกฟังก์ชันบันทึก Log หลังจากตัดสต๊อกเสร็จสิ้น
       _logOrderUsage(cartItems, orderId);
       return orderId;
     });
   }
 
-  // --- 🔥 ฟังก์ชันช่วยบันทึก Log ---
+  // --- 🔥 ฟังก์ชันบันทึก Log (แก้ไขให้ดึงยอดคงเหลือจริง) ---
   Future<void> _logOrderUsage(List<CartItem> cartItems, String orderId) async {
+    // 1. รวบรวม ID วัตถุดิบ
+    Set<String> ingredientIds = {};
+    for (var item in cartItems) {
+       for (var recipe in item.menu.recipe) {
+          if (recipe.ingredientId.isNotEmpty) ingredientIds.add(recipe.ingredientId);
+       }
+    }
+
+    if (ingredientIds.isEmpty) return;
+
+    // 2. ดึงชื่อและ "จำนวนคงเหลือล่าสุด" จาก Database
+    Map<String, String> ingredientNames = {};
+    Map<String, double> ingredientStocks = {}; // เก็บสต๊อกล่าสุด
+
+    try {
+      for (String id in ingredientIds) {
+         var doc = await _db.collection('ingredients').doc(id).get();
+         if (doc.exists) {
+            var data = doc.data()!;
+            ingredientNames[id] = data['name'] ?? 'Unknown';
+            // --- 🔥 ดึงค่า currentStock ที่เพิ่งอัปเดตมาเก็บไว้ ---
+            ingredientStocks[id] = (data['currentStock'] ?? 0).toDouble(); 
+         }
+      }
+    } catch (e) {
+      print("Error fetching ingredient info: $e");
+    }
+
+    // 3. บันทึก Log (ใช้ Batch เพื่อความเร็ว)
+    WriteBatch batch = _db.batch();
+
     for (var cartItem in cartItems) {
       for (int i = 0; i < cartItem.quantity; i++) {
         for (var recipe in cartItem.menu.recipe) {
            if (recipe.ingredientId.isNotEmpty) {
-             FirebaseFirestore.instance.collection('stock_logs').add({
-               'ingredientName': 'ID: ${recipe.ingredientId}', // บันทึก ID วัตถุดิบ (หรือจะ query ชื่อมาก็ได้ถ้าต้องการ)
-               'changeAmount': -recipe.quantityUsed, // ติดลบเพราะใช้ไป
-               'remainingStock': 0, // (เว้นไว้เพราะต้อง query ใหม่)
+             String name = ingredientNames[recipe.ingredientId] ?? 'ID: ${recipe.ingredientId}';
+             double remaining = ingredientStocks[recipe.ingredientId] ?? 0;
+
+             // สร้างเอกสาร Log ใหม่
+             DocumentReference logRef = _db.collection('stock_logs').doc();
+             
+             batch.set(logRef, {
+               'ingredientName': name,
+               'changeAmount': -recipe.quantityUsed, 
+               'remainingStock': remaining, // --- 🔥 บันทึกยอดคงเหลือจริงที่นี่ ---
                'reason': 'Order #$orderId (${cartItem.menu.name})',
                'timestamp': FieldValue.serverTimestamp(),
              });
@@ -144,5 +171,7 @@ class OrderService {
         }
       }
     }
+    // ส่งข้อมูลทั้งหมดทีเดียว
+    await batch.commit();
   }
 }
