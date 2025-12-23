@@ -5,7 +5,15 @@ import '../providers/cart_provider.dart';
 class OrderService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  Future<String> placeOrder(List<CartItem> cartItems, String tableNumber, String paymentMethod, String branchName, double discount) async {
+  // --- 🔥 แก้ไข Signature: เพิ่ม memberId และ recorderName เป็น Optional ---
+  Future<String> placeOrder(
+    List<CartItem> cartItems, 
+    String tableNumber, 
+    String paymentMethod, 
+    String branchName, 
+    double discount, 
+    [String? memberId, String? recorderName] // รับชื่อคนขาย (Optional)
+  ) async {
     return await _db.runTransaction((transaction) async {
       
       // --- Phase 1: อ่านข้อมูล (Reads) ---
@@ -79,6 +87,7 @@ class OrderService {
         totalPrice += (cartItem.menu.price * cartItem.quantity);
         for (int i = 0; i < cartItem.quantity; i++) {
            String detail = "${cartItem.menu.name}";
+           // เพิ่ม Option ต่อท้าย (ถ้ามี)
            bool showOption = (cartItem.sweetness != '-' && cartItem.sweetness != 'ปกติ (100%)') ||
                              (cartItem.milk != '-' && cartItem.milk != 'นมวัว');
            if (showOption) { detail += " (${cartItem.sweetness}, ${cartItem.milk})"; }
@@ -99,6 +108,8 @@ class OrderService {
         'status': 'pending',
         'paymentMethod': paymentMethod,
         'branchName': branchName,
+        'recorder': recorderName ?? 'Unknown', // --- 🔥 บันทึกชื่อคนขาย ---
+        'memberId': memberId, // บันทึก ID สมาชิก (ถ้ามี)
         'timestamp': FieldValue.serverTimestamp(), 
       });
 
@@ -111,14 +122,14 @@ class OrderService {
 
       return runningId; 
     }).then((orderId) {
-      // เรียกฟังก์ชันบันทึก Log หลังจากตัดสต๊อกเสร็จสิ้น
-      _logOrderUsage(cartItems, orderId);
+      // เรียกฟังก์ชันบันทึก Log และส่งชื่อคนขายไปด้วย
+      _logOrderUsage(cartItems, orderId, recorderName);
       return orderId;
     });
   }
 
-  // --- 🔥 ฟังก์ชันบันทึก Log (แก้ไขให้ดึงยอดคงเหลือจริง) ---
-  Future<void> _logOrderUsage(List<CartItem> cartItems, String orderId) async {
+  // --- 🔥 ฟังก์ชันบันทึก Log (รับ recorderName) ---
+  Future<void> _logOrderUsage(List<CartItem> cartItems, String orderId, String? recorderName) async {
     // 1. รวบรวม ID วัตถุดิบ
     Set<String> ingredientIds = {};
     for (var item in cartItems) {
@@ -129,9 +140,9 @@ class OrderService {
 
     if (ingredientIds.isEmpty) return;
 
-    // 2. ดึงชื่อและ "จำนวนคงเหลือล่าสุด" จาก Database
+    // 2. ดึงชื่อและสต๊อกล่าสุด
     Map<String, String> ingredientNames = {};
-    Map<String, double> ingredientStocks = {}; // เก็บสต๊อกล่าสุด
+    Map<String, double> ingredientStocks = {};
 
     try {
       for (String id in ingredientIds) {
@@ -139,7 +150,6 @@ class OrderService {
          if (doc.exists) {
             var data = doc.data()!;
             ingredientNames[id] = data['name'] ?? 'Unknown';
-            // --- 🔥 ดึงค่า currentStock ที่เพิ่งอัปเดตมาเก็บไว้ ---
             ingredientStocks[id] = (data['currentStock'] ?? 0).toDouble(); 
          }
       }
@@ -147,7 +157,7 @@ class OrderService {
       print("Error fetching ingredient info: $e");
     }
 
-    // 3. บันทึก Log (ใช้ Batch เพื่อความเร็ว)
+    // 3. บันทึก Log (Batch)
     WriteBatch batch = _db.batch();
 
     for (var cartItem in cartItems) {
@@ -157,21 +167,20 @@ class OrderService {
              String name = ingredientNames[recipe.ingredientId] ?? 'ID: ${recipe.ingredientId}';
              double remaining = ingredientStocks[recipe.ingredientId] ?? 0;
 
-             // สร้างเอกสาร Log ใหม่
              DocumentReference logRef = _db.collection('stock_logs').doc();
              
              batch.set(logRef, {
                'ingredientName': name,
                'changeAmount': -recipe.quantityUsed, 
-               'remainingStock': remaining, // --- 🔥 บันทึกยอดคงเหลือจริงที่นี่ ---
+               'remainingStock': remaining,
                'reason': 'Order #$orderId (${cartItem.menu.name})',
+               'recorder': recorderName ?? 'System', // --- 🔥 บันทึกชื่อคนขายใน Log ---
                'timestamp': FieldValue.serverTimestamp(),
              });
            }
         }
       }
     }
-    // ส่งข้อมูลทั้งหมดทีเดียว
     await batch.commit();
   }
 }

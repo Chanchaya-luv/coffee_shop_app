@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'stock_history_screen.dart'; // ตรวจสอบว่ามีไฟล์นี้จริง หรือ comment ออกถ้าไม่มี
+import 'package:firebase_auth/firebase_auth.dart'; // 🔥 เพิ่ม Import Auth
+import 'stock_history_screen.dart';
 
 class StockScreen extends StatefulWidget {
   const StockScreen({super.key});
@@ -12,18 +13,36 @@ class StockScreen extends StatefulWidget {
 class _StockScreenState extends State<StockScreen> {
   String _selectedFilter = "ทั้งหมด";
 
-  // --- 🔥 ฟังก์ชันช่วยบันทึก Log ---
+  // --- 🔥 ฟังก์ชันดึงชื่อคนล็อกอิน ---
+  Future<String> _getRecorderName() async {
+    User? user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      try {
+        var doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+        if (doc.exists) {
+          return doc.data()?['name'] ?? 'พนักงาน';
+        }
+      } catch (e) {
+        print("Error getting user name: $e");
+      }
+    }
+    return 'Admin'; 
+  }
+
+  // --- 🔥 อัปเดตฟังก์ชันบันทึก Log ให้ใส่ชื่อคนทำ ---
   Future<void> _logStockChange(String name, double change, double finalStock, String reason) async {
+    String recorder = await _getRecorderName(); // ดึงชื่อ
     await FirebaseFirestore.instance.collection('stock_logs').add({
       'ingredientName': name,
       'changeAmount': change,
       'remainingStock': finalStock,
       'reason': reason,
+      'recorder': recorder, // ✅ บันทึกชื่อลง Database
       'timestamp': FieldValue.serverTimestamp(),
     });
   }
 
-  // --- 🔥 ฟังก์ชัน Dialog จัดการวัตถุดิบ (เพิ่ม/แก้ไข ข้อมูลหลัก) ---
+  // ฟังก์ชันจัดการวัตถุดิบ (เพิ่ม/แก้ไข)
   void _showManageIngredientDialog(BuildContext context, {String? id, Map<String, dynamic>? data}) {
     final isEditing = id != null;
     
@@ -72,12 +91,11 @@ class _StockScreenState extends State<StockScreen> {
                   if (isCustomCat) Padding(padding: const EdgeInsets.only(top: 10), child: TextField(controller: customCatCtrl, decoration: const InputDecoration(labelText: "ชื่อหมวดหมู่ใหม่"))),
                   const SizedBox(height: 10),
                   Row(children: [Expanded(flex: 2, child: TextField(controller: stockCtrl, decoration: const InputDecoration(labelText: "คงเหลือ"), keyboardType: const TextInputType.numberWithOptions(decimal: true))), const SizedBox(width: 10), Expanded(flex: 1, child: TextField(controller: unitCtrl, decoration: const InputDecoration(labelText: "หน่วย")))]),
-                  
                   const SizedBox(height: 15),
                   const Divider(),
                   const Text("ตั้งค่าต้นทุน", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
                   Row(children: [Expanded(child: TextField(controller: costCtrl, decoration: const InputDecoration(labelText: "ราคาซื้อ"), keyboardType: TextInputType.number, onChanged: (v)=>setState((){}))), const SizedBox(width: 10), Expanded(child: TextField(controller: packSizeCtrl, decoration: const InputDecoration(labelText: "ปริมาณต่อแพ็ค"), keyboardType: TextInputType.number, onChanged: (v)=>setState((){})))]),
-                  if (price > 0 && size > 0) Text("ตกเฉลี่ย: ${costPerUnit.toStringAsFixed(4)} /หน่วย", style: const TextStyle(color: Colors.green, fontSize: 12)),
+                  if (price > 0 && size > 0) Text("ตกเฉลี่ย: ${costPerUnit.toStringAsFixed(3)} /หน่วย", style: const TextStyle(color: Colors.green, fontSize: 12)),
                 ],
               ),
             ),
@@ -108,7 +126,7 @@ class _StockScreenState extends State<StockScreen> {
 
                     if (isEditing) {
                       await FirebaseFirestore.instance.collection('ingredients').doc(id).update(ingredientData);
-                      if (newStock != oldStock) _logStockChange(nameCtrl.text, newStock - oldStock, newStock, "แก้ไขโดย Admin");
+                      if (newStock != oldStock) _logStockChange(nameCtrl.text, newStock - oldStock, newStock, "แก้ไขสต๊อก");
                     } else {
                       await FirebaseFirestore.instance.collection('ingredients').add(ingredientData);
                       _logStockChange(nameCtrl.text, newStock, newStock, "เพิ่มสินค้าใหม่");
@@ -125,7 +143,6 @@ class _StockScreenState extends State<StockScreen> {
     );
   }
 
-  // --- 🔥 ฟังก์ชันปรับสต๊อก (+/-) ---
   void _updateStock(String id, String name, double current, double change) {
     double newStock = current + change;
     FirebaseFirestore.instance.collection('ingredients').doc(id).update({
@@ -134,7 +151,6 @@ class _StockScreenState extends State<StockScreen> {
     _logStockChange(name, change, newStock, "ปรับด่วน (Quick Update)");
   }
 
-  // --- 🔥 ฟังก์ชัน Dialog กรอกจำนวน (Quick Add) ที่ปุ่มสีฟ้าเรียกใช้ ---
   void _showQuickAddDialog(BuildContext context, String id, String name, double currentStock, String unit) {
     final amountCtrl = TextEditingController();
     showDialog(
@@ -150,29 +166,17 @@ class _StockScreenState extends State<StockScreen> {
                controller: amountCtrl,
                keyboardType: const TextInputType.numberWithOptions(decimal: true),
                autofocus: true,
-               decoration: InputDecoration(
+               decoration: const InputDecoration(
                  labelText: "จำนวนที่ต้องการเพิ่ม (+)",
                  hintText: "เช่น 100",
                  helperText: "ใส่เครื่องหมายลบ (-) หากต้องการลด เช่น -50",
-                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                 prefixIcon: const Icon(Icons.exposure),
                ),
              ),
           ],
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("ยกเลิก")),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFA6C48A), foregroundColor: Colors.white),
-            onPressed: () {
-               double val = double.tryParse(amountCtrl.text) ?? 0;
-               if (val != 0) {
-                 _updateStock(id, name, currentStock, val);
-                 Navigator.pop(ctx);
-               }
-            }, 
-            child: const Text("ยืนยัน")
-          )
+          ElevatedButton(onPressed: () { double val = double.tryParse(amountCtrl.text) ?? 0; if (val != 0) { _updateStock(id, name, currentStock, val); Navigator.pop(ctx); } }, child: const Text("ยืนยัน"))
         ],
       )
     );
@@ -186,6 +190,7 @@ class _StockScreenState extends State<StockScreen> {
         title: const Text("จัดการวัตถุดิบ (Stock)", style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: const Color(0xFF6F4E37),
         foregroundColor: Colors.white,
+        elevation: 0,
         actions: [
           IconButton(
             icon: const Icon(Icons.history),
@@ -225,7 +230,10 @@ class _StockScreenState extends State<StockScreen> {
               Container(
                 height: 60,
                 padding: const EdgeInsets.symmetric(vertical: 10),
-                decoration: BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 5)]),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 5)],
+                ),
                 child: ListView.separated(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   scrollDirection: Axis.horizontal,
@@ -238,8 +246,19 @@ class _StockScreenState extends State<StockScreen> {
                       onTap: () => setState(() => _selectedFilter = cat),
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                        decoration: BoxDecoration(color: isSelected ? const Color(0xFFA6C48A) : Colors.grey[200], borderRadius: BorderRadius.circular(20)),
-                        child: Center(child: Text(cat, style: TextStyle(color: isSelected ? Colors.white : Colors.black87, fontWeight: FontWeight.bold))),
+                        decoration: BoxDecoration(
+                          color: isSelected ? const Color(0xFFA6C48A) : Colors.grey[200],
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Center(
+                          child: Text(
+                            cat,
+                            style: TextStyle(
+                              color: isSelected ? Colors.white : Colors.black87,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
                       ),
                     );
                   },
@@ -248,75 +267,95 @@ class _StockScreenState extends State<StockScreen> {
 
               // Stock List
               Expanded(
-                child: ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: filteredDocs.length,
-                  itemBuilder: (context, index) {
-                    final data = filteredDocs[index].data() as Map<String, dynamic>;
-                    final id = filteredDocs[index].id;
-                    final name = data['name'] ?? '-';
-                    final category = data['category'] ?? 'อื่นๆ';
-                    final stock = (data['currentStock'] ?? 0).toDouble();
-                    final unit = data['unit'] ?? '';
-                    final min = (data['minThreshold'] ?? 0).toDouble();
-                    final isLow = stock <= min;
+                child: filteredDocs.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.inbox, size: 60, color: Colors.grey),
+                            const SizedBox(height: 10),
+                            Text("ไม่มีวัตถุดิบในหมวด '$_selectedFilter'", style: const TextStyle(color: Colors.grey)),
+                          ],
+                        ),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: filteredDocs.length,
+                        itemBuilder: (context, index) {
+                          var data = filteredDocs[index].data() as Map<String, dynamic>;
+                          String id = filteredDocs[index].id;
+                          String name = data['name'] ?? '-';
+                          String category = data['category'] ?? 'อื่นๆ';
+                          double stock = (data['currentStock'] ?? 0).toDouble();
+                          String unit = data['unit'] ?? '';
+                          double min = (data['minThreshold'] ?? 0).toDouble();
+                          bool isLow = stock <= min;
 
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      child: InkWell(
-                        onTap: () => _showManageIngredientDialog(context, id: id, data: data),
-                        child: Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(10),
-                                decoration: BoxDecoration(color: isLow ? Colors.red[50] : Colors.green[50], shape: BoxShape.circle),
-                                child: Icon(isLow ? Icons.warning_amber : Icons.inventory_2, color: isLow ? Colors.red : Colors.green),
-                              ),
-                              const SizedBox(width: 12),
-
-                              // --- ✅ ส่วนป้องกัน Overflow ---
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
+                          return Card(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(12),
+                              // กดเพื่อแก้ไขข้อมูลหลัก
+                              onTap: () => _showManageIngredientDialog(context, id: id, data: data),
+                              child: Padding(
+                                padding: const EdgeInsets.all(12.0),
+                                child: Row(
                                   children: [
-                                    Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                                    const SizedBox(height: 4),
+                                    Container(
+                                      padding: const EdgeInsets.all(10),
+                                      decoration: BoxDecoration(
+                                        color: isLow ? Colors.red[50] : Colors.green[50],
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: Icon(
+                                        isLow ? Icons.warning_amber : Icons.inventory_2, 
+                                        color: isLow ? Colors.red : Colors.green
+                                      ),
+                                    ),
+                                    const SizedBox(width: 15),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                                          const SizedBox(height: 4),
+                                          Row(
+                                            children: [
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                decoration: BoxDecoration(color: Colors.grey[200], borderRadius: BorderRadius.circular(4)),
+                                                child: Text(category, style: TextStyle(fontSize: 10, color: Colors.grey[800])),
+                                              ),
+                                              const SizedBox(width: 8),
+                                              Text("$stock $unit", style: TextStyle(fontWeight: FontWeight.bold, color: isLow ? Colors.red : Colors.black87)),
+                                              if (isLow) const Padding(padding: EdgeInsets.only(left: 5), child: Text("(ใกล้หมด!)", style: TextStyle(color: Colors.red, fontSize: 12))),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    
+                                    // --- 🔥 ปุ่มจัดการสต๊อก (+/- และ กรอกเอง) ---
                                     Row(
+                                      mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                          decoration: BoxDecoration(color: Colors.grey[200], borderRadius: BorderRadius.circular(4)),
-                                          child: Text(category, style: const TextStyle(fontSize: 10)),
+                                        IconButton(icon: const Icon(Icons.remove_circle_outline, color: Colors.red), onPressed: () => _updateStock(id, name, stock, -1)),
+                                        // 🔥 ปุ่มกรอกจำนวน (Quick Add)
+                                        IconButton(
+                                          icon: const Icon(Icons.edit_square, color: Colors.blue),
+                                          tooltip: "กรอกจำนวน",
+                                          onPressed: () => _showQuickAddDialog(context, id, name, stock, unit),
                                         ),
-                                        const SizedBox(width: 6),
-                                        Flexible(
-                                          child: Text("$stock $unit${isLow ? " (ใกล้หมด!)" : ""}", maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.bold, color: isLow ? Colors.red : Colors.black87, fontSize: 13)),
-                                        ),
+                                        IconButton(icon: const Icon(Icons.add_circle, color: Colors.green), onPressed: () => _updateStock(id, name, stock, 1)),
                                       ],
                                     ),
                                   ],
                                 ),
                               ),
-
-                              // --- ✅ ปุ่มจัดการ ---
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  IconButton(icon: const Icon(Icons.remove_circle_outline, color: Colors.red), onPressed: () => _updateStock(id, name, stock, -1)),
-                                  // 🔥 ปุ่มสีฟ้า (Quick Add) ทำงานได้แล้ว
-                                  IconButton(icon: const Icon(Icons.edit_square, color: Colors.blue), onPressed: () => _showQuickAddDialog(context, id, name, stock, unit)),
-                                  IconButton(icon: const Icon(Icons.add_circle, color: Colors.green), onPressed: () => _updateStock(id, name, stock, 1)),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
+                            ),
+                          );
+                        },
                       ),
-                    );
-                  },
-                ),
               ),
             ],
           );

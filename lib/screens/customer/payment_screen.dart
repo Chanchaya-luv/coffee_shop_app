@@ -2,10 +2,10 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_gallery_saver/image_gallery_saver.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // 🔥 1. เพิ่ม Import Auth
 
 import '../../providers/cart_provider.dart';
 import '../../services/order_service.dart';
@@ -19,6 +19,7 @@ class PaymentScreen extends StatefulWidget {
   final String tableNumber;
   final bool isCustomer;
   final double discount;
+  // (ถ้ามี memberId ก็รับเพิ่มตรงนี้ได้ แต่ในที่นี้ขอเว้นไว้ตามโค้ดเดิม)
 
   const PaymentScreen({
     super.key,
@@ -37,20 +38,37 @@ class _PaymentScreenState extends State<PaymentScreen> {
   bool _isProcessing = false;
   final GlobalKey _qrKey = GlobalKey();
   
-  // --- 🔥 1. เพิ่มตัวแปรสำหรับคำนวณเงินทอน ---
   final TextEditingController _cashCtrl = TextEditingController();
-  double _change = 0.0; // เก็บยอดเงินทอน
+  double _change = 0.0;
+  
+  // --- 🔥 2. ตัวแปรเก็บชื่อคนขาย ---
+  String _currentUserName = 'Unknown'; 
 
   @override
   void initState() {
     super.initState();
-    // --- 🔥 2. ดักฟังการพิมพ์ เพื่อคำนวณเงินทอนทันที ---
+    _loadCurrentUser(); // ดึงชื่อทันทีเมื่อเข้าหน้า
     _cashCtrl.addListener(() {
       double cash = double.tryParse(_cashCtrl.text) ?? 0.0;
       setState(() {
         _change = cash - widget.amount;
       });
     });
+  }
+  
+  // --- 🔥 ฟังก์ชันดึงชื่อคนขายจาก Firebase ---
+  Future<void> _loadCurrentUser() async {
+    User? user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+       try {
+         var doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+         if (doc.exists && mounted) {
+            setState(() => _currentUserName = doc.data()?['name'] ?? 'พนักงาน');
+         }
+       } catch (e) {
+         print("Error loading user: $e");
+       }
+    }
   }
 
   @override
@@ -60,14 +78,14 @@ class _PaymentScreenState extends State<PaymentScreen> {
   }
 
   Future<void> _adminConfirmPayment() async {
-    // --- 🔥 3. เช็คยอดเงินก่อนบันทึก (เฉพาะแอดมินจ่ายสด) ---
+    // เช็คว่าจ่ายครบหรือยัง (เฉพาะเงินสด)
     if (!widget.isCustomer && widget.paymentMethod == 'Cash') {
       double cash = double.tryParse(_cashCtrl.text) ?? 0.0;
       if (cash < widget.amount) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("ยอดเงินที่รับมาไม่พอจ่าย"), backgroundColor: Colors.red),
+          const SnackBar(content: Text("รับเงินมาไม่ครบตามจำนวน"), backgroundColor: Colors.red),
         );
-        return; // หยุดการทำงาน ไม่ให้บันทึก
+        return;
       }
     }
 
@@ -75,28 +93,19 @@ class _PaymentScreenState extends State<PaymentScreen> {
     final cart = Provider.of<CartProvider>(context, listen: false);
     
     try {
-  List<CartItem> orderItems = [];
+      // --- 🔥 3. แก้ไขการเตรียมข้อมูล (ส่ง CartItem ทั้งก้อน เพื่อให้ได้ Option) ---
+      List<CartItem> orderItems = cart.items.values.toList();
 
-  cart.items.forEach((key, value) {
-    for (int i = 0; i < value.quantity; i++) {
-      orderItems.add(
-        CartItem(
-          menu: value.menu,
-          quantity: 1,
-          sweetness: value.sweetness,
-          milk: value.milk,
-        ),
+      // --- 🔥 4. ส่งข้อมูลไป Service (เพิ่ม recorderName ท้ายสุด) ---
+      String newOrderId = await OrderService().placeOrder(
+        orderItems, 
+        widget.tableNumber,
+        widget.paymentMethod,
+        "สาขาหลัก",
+        widget.discount,
+        null, // memberId (ถ้ามีให้ใส่ตรงนี้)
+        _currentUserName // ✅ ส่งชื่อคนขายไปบันทึก
       );
-    }
-  });
-
-  String newOrderId = await OrderService().placeOrder(
-    orderItems, 
-    widget.tableNumber,
-    widget.paymentMethod,
-    "สาขาหลัก",
-    widget.discount,
-  );
 
       cart.clearCart();
       cart.setActiveOrder(newOrderId);
@@ -120,7 +129,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
           (route) => false,
         );
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("ชำระเงินเรียบร้อย! ทอนเงิน ${NumberFormat('#,##0.00').format(_change > 0 ? _change : 0)} บาท"), backgroundColor: Colors.green)
+          const SnackBar(content: Text("บันทึกออเดอร์เรียบร้อย!"), backgroundColor: Colors.green),
         );
       }
 
@@ -190,7 +199,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
               child: Column(
                 children: [
                   if (isQR) ...[
-                    // ส่วนแสดง QR Code (เหมือนเดิม)
                     RepaintBoundary(
                       key: _qrKey,
                       child: Container(
@@ -199,14 +207,28 @@ class _PaymentScreenState extends State<PaymentScreen> {
                         child: StreamBuilder<DocumentSnapshot>(
                           stream: FirebaseFirestore.instance.collection('metadata').doc('shop_settings').snapshots(),
                           builder: (context, snapshot) {
-                            String bankName = "พร้อมเพย์ (PromptPay)"; String accNo = "081-234-5678"; String accName = "";
+                            String bankName = "พร้อมเพย์ (PromptPay)";
+                            String accNo = "081-234-5678";
+                            String accName = "";
+
                             if (snapshot.hasData && snapshot.data!.exists) {
                               var data = snapshot.data!.data() as Map<String, dynamic>;
                               bankName = data['bankName'] ?? bankName;
                               accNo = data['accountNumber'] ?? accNo;
                               accName = data['accountName'] ?? accName;
                             }
-                            return Column(children: [const Icon(Icons.qr_code_2, size: 200, color: Colors.black), const SizedBox(height: 10), Text(bankName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)), const SizedBox(height: 5), Text(accNo, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF5D4037))), if (accName.isNotEmpty) Text(accName, style: const TextStyle(fontSize: 14, color: Colors.grey))]);
+
+                            return Column(
+                              children: [
+                                const Icon(Icons.qr_code_2, size: 200, color: Colors.black),
+                                const SizedBox(height: 10),
+                                Text(bankName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                                const SizedBox(height: 5),
+                                Text(accNo, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF5D4037))),
+                                if (accName.isNotEmpty)
+                                  Text(accName, style: const TextStyle(fontSize: 14, color: Colors.grey)),
+                              ],
+                            );
                           },
                         ),
                       ),
@@ -217,12 +239,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
                       label: const Text("บันทึก QR ลงเครื่อง", style: TextStyle(color: Color(0xFF5D4037), fontWeight: FontWeight.bold)),
                     ),
                   ] else ...[
-                    // --- 🔥 4. ปรับปรุง UI ส่วนเงินสด ---
                     const Icon(Icons.payments, size: 80, color: Colors.green),
                     const SizedBox(height: 20),
                     
                     if (!widget.isCustomer) ...[
-                      // ถ้าเป็น Admin: โชว์ช่องกรอกเงิน
                       TextField(
                         controller: _cashCtrl,
                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -239,7 +259,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
                         ),
                       ),
                       const SizedBox(height: 20),
-                      // แสดงเงินทอน
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -249,14 +268,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
                             style: TextStyle(
                               fontSize: 28, 
                               fontWeight: FontWeight.bold, 
-                              // ถ้าเงินทอนติดลบ (จ่ายไม่ครบ) ให้เป็นสีแดง
                               color: _change >= 0 ? Colors.green : Colors.red
                             )
                           ),
                         ],
                       ),
                     ] else ...[
-                      // ถ้าเป็นลูกค้า: โชว์ข้อความปกติ
                       const Text("กรุณาชำระเงินที่เคาน์เตอร์", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87)),
                       const SizedBox(height: 5),
                       const Text("พนักงานจะทำการยืนยันยอดเงินของท่าน", style: TextStyle(fontSize: 14, color: Colors.grey)),
@@ -279,7 +296,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
               ),
             ),
             
-            // ✅ แก้ Spacer ที่ Error ให้เป็น SizedBox
             const SizedBox(height: 40),
 
             SizedBox(

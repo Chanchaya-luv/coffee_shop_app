@@ -48,6 +48,8 @@ class StockHistoryScreen extends StatelessWidget {
               double change = (data['changeAmount'] ?? 0).toDouble();
               double remaining = (data['remainingStock'] ?? 0).toDouble();
               String reason = data['reason'] ?? '';
+              // --- 🔥 ดึงชื่อคนทำรายการ ---
+              String recorder = data['recorder'] ?? 'System';
               
               Timestamp? ts = data['timestamp'];
               String timeStr = ts != null ? DateFormat('dd/MM HH:mm').format(ts.toDate()) : '-';
@@ -65,7 +67,15 @@ class StockHistoryScreen extends StatelessWidget {
                   ),
                 ),
                 title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: Text("$timeStr • $reason"),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text("$timeStr • $reason"),
+                    // --- 🔥 แสดงชื่อคนทำรายการ ---
+                    if (recorder != 'System')
+                      Text("โดย: $recorder", style: TextStyle(fontSize: 12, color: Colors.blue[700])),
+                  ],
+                ),
                 trailing: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.end,
