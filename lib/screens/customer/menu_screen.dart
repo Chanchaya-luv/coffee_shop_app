@@ -6,10 +6,11 @@ import '../../models/model_menu.dart';
 import '../../providers/cart_provider.dart';
 import 'checkout_screen.dart';
 import 'customer_tracking_screen.dart';
-// --- 🔥 เพิ่ม Import หน้าต่างเลือกตัวเลือก (Visual) ---
-import '../common/visual_product_customize_dialog.dart';
-// --- 🔥 เพิ่ม Import หน้า Mood ---
+import '../common/product_customize_dialog.dart';
+// --- 🔥 Import หน้า Mood ---
 import 'mood_recommendation_screen.dart';
+// --- 🔥 เพิ่ม Import หน้ากล่องสุ่ม ---
+import 'mystery_box_screen.dart';
 
 class MenuScreen extends StatefulWidget {
   final String tableNumber; 
@@ -24,36 +25,31 @@ class _MenuScreenState extends State<MenuScreen> {
   final List<String> _categories = ["กาแฟ", "ชา", "นมสด", "ผลไม้", "เบเกอรี่"];
   String _selectedCategory = "ทั้งหมด"; 
 
-  // --- 🔥 ฟังก์ชันเปิดหน้าต่างเลือกตัวเลือก (แก้ไขใหม่) ---
+  // --- 🔥 ฟังก์ชันเปิดหน้าต่างเลือกตัวเลือก ---
   void _openCustomizeDialog(MenuItem menu) {
-    // 1. เช็คหมวดหมู่ที่ไม่ต้องเลือก Option (เช่น เบเกอรี่)
-    if (['เบเกอรี่', 'ขนม', 'เค้ก', 'ของหวาน'].contains(menu.category)) {
-      
-      // เพิ่มลงตะกร้าเลย (ใส่ค่า '-' เพื่อบอกว่าไม่มี Option)
+    // 1. เช็คหมวดหมู่ที่ไม่ต้องเลือก Option
+    if (['เบเกอรี่', 'ขนม', 'เค้ก', 'ของหวาน', 'ผลไม้'].contains(menu.category)) {
       Provider.of<CartProvider>(context, listen: false).addItem(
         menu, 
         sweetness: '-', 
         milk: '-'
       );
-      
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text("เพิ่ม ${menu.name} แล้ว"), 
           duration: const Duration(milliseconds: 800)
         )
       );
-      return; // จบการทำงาน ไม่เปิด Dialog
+      return; 
     }
 
-    // 2. ถ้าเป็นหมวดอื่นๆ (เครื่องดื่ม) ให้เปิด Visual Dialog
+    // 2. ถ้าเป็นหมวดอื่นๆ ให้เปิด Dialog
     showDialog(
       context: context,
-      builder: (context) => VisualProductCustomizeDialog( // 👈 ใช้ตัวใหม่นี้
+      builder: (context) => ProductCustomizeDialog(
         menu: menu,
         onConfirm: (sweetness, milk) {
-          // เพิ่มลงตะกร้าพร้อมตัวเลือก
           Provider.of<CartProvider>(context, listen: false).addItem(menu, sweetness: sweetness, milk: milk);
-          
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text("เพิ่ม ${menu.name} ($sweetness, $milk) แล้ว"), 
@@ -174,26 +170,54 @@ class _MenuScreenState extends State<MenuScreen> {
                 ),
               ),
 
-              // --- 🔥 ปุ่มพิเศษ "Mood Recommender" ---
+              // --- 🔥 2. ปุ่มพิเศษ: Mood & Mystery Box (วางคู่กัน) ---
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                child: SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: ElevatedButton.icon(
-                    onPressed: () {
-                      Navigator.push(context, MaterialPageRoute(builder: (context) => const MoodRecommendationScreen()));
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: const Color(0xFF6F4E37),
-                      elevation: 2,
-                      side: const BorderSide(color: Color(0xFF6F4E37), width: 1.5),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                child: Row(
+                  children: [
+                    // ปุ่ม Mood (ช่วยเลือกเมนู)
+                    Expanded(
+                      flex: 6,
+                      child: SizedBox(
+                        height: 50,
+                        child: ElevatedButton.icon(
+                          onPressed: () {
+                            Navigator.push(context, MaterialPageRoute(builder: (context) => const MoodRecommendationScreen()));
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.white,
+                            foregroundColor: const Color(0xFF6F4E37),
+                            elevation: 2,
+                            side: const BorderSide(color: Color(0xFF6F4E37), width: 1.5),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                          ),
+                          icon: const Icon(Icons.auto_awesome, color: Colors.orange),
+                          label: const Text("ช่วยเลือกเมนู", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                        ),
+                      ),
                     ),
-                    icon: const Icon(Icons.auto_awesome, color: Colors.orange),
-                    label: const Text("ไม่รู้จะกินอะไร? ให้เราช่วยเลือก", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                  ),
+                    const SizedBox(width: 10),
+                    // 🔥 ปุ่ม Mystery Box (สุ่ม)
+                    Expanded(
+                      flex: 4,
+                      child: SizedBox(
+                        height: 50,
+                        child: ElevatedButton.icon(
+                          onPressed: () {
+                            Navigator.push(context, MaterialPageRoute(builder: (context) => const MysteryBoxScreen()));
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.deepPurple,
+                            foregroundColor: Colors.white,
+                            elevation: 2,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                          ),
+                          icon: const Icon(Icons.card_giftcard),
+                          label: const Text("สุ่มเลย!", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
 
@@ -229,7 +253,7 @@ class _MenuScreenState extends State<MenuScreen> {
                           category: data['category'] ?? 'อื่นๆ',
                           imageUrl: data['imageUrl'] ?? '',
                           recipe: recipeList,
-                          isAvailable: data['isAvailable'] ?? true, 
+                          isAvailable: data['isAvailable'] ?? true,
                         );
 
                         return _buildMenuCard(context, menu);
@@ -275,7 +299,6 @@ class _MenuScreenState extends State<MenuScreen> {
                     decoration: BoxDecoration(color: Colors.brown[50], borderRadius: BorderRadius.circular(12)),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(12),
-                      // --- 🔥 แสดงรูปภาพ ---
                       child: menu.imageUrl.isNotEmpty
                           ? ColorFiltered(
                               colorFilter: menu.isAvailable 
@@ -310,7 +333,7 @@ class _MenuScreenState extends State<MenuScreen> {
               
               if (menu.isAvailable)
                 InkWell(
-                  onTap: () => _openCustomizeDialog(menu), 
+                  onTap: () => _openCustomizeDialog(menu),
                   child: Container(padding: const EdgeInsets.all(6), decoration: const BoxDecoration(color: Color(0xFFA6C48A), shape: BoxShape.circle), child: const Icon(Icons.add, color: Colors.white, size: 20))
                 )
               else

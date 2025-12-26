@@ -52,16 +52,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     bool hasPromoItem = items.any((item) => item.menu.id.endsWith('_PROMO'));
     if (hasPromoItem) return;
 
-    // --- 🔥 แก้ตรงนี้: เรียก getUpsellItems (เติม s) และรับเป็น List ---
     List<MenuItem> upsellItems = await SmartUpsellService().getUpsellItems(items);
 
     if (upsellItems.isNotEmpty && mounted) {
-      _showUpsellDialog(upsellItems); // ส่ง List ไปแสดงผล
+      _showUpsellDialog(upsellItems); 
       _hasCheckedUpsell = true; 
     }
   }
 
-  // --- 🔥 ปรับปรุง: Dialog แสดงรายการให้เลือก (Multi Choice) ---
   void _showUpsellDialog(List<MenuItem> upsellItems) {
     showDialog(
       context: context,
@@ -72,7 +70,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Header
             Container(
               height: 100,
               width: double.infinity,
@@ -90,10 +87,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 ],
               ),
             ),
-            
-            // List Items
             Container(
-              height: 300, // กำหนดความสูงเพื่อให้ Scroll ได้
+              height: 300, 
               width: double.maxFinite,
               padding: const EdgeInsets.symmetric(vertical: 10),
               child: ListView.separated(
@@ -102,7 +97,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 separatorBuilder: (_,__) => const Divider(),
                 itemBuilder: (context, index) {
                   final item = upsellItems[index];
-                  double specialPrice = item.price * 0.8; // ลด 20%
+                  double specialPrice = item.price * 0.8;
 
                   return ListTile(
                     contentPadding: EdgeInsets.zero,
@@ -129,7 +124,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       ),
                       onPressed: () {
-                         // Logic เพิ่มสินค้า (เลือกได้แค่ 1)
                          MenuItem discountedItem = MenuItem(
                             id: "${item.id}_PROMO", 
                             name: "${item.name} (Pro 20%)",
@@ -265,8 +259,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   itemBuilder: (context, index) {
                     var cartItem = items[index];
                     
-                    // --- 🔥 เช็คว่าเป็นสินค้าโปรโมชั่นหรือไม่ ---
-                    bool isPromo = cartItem.menu.id.endsWith('_PROMO');
+                    // --- 🔥 เช็คว่าเป็นสินค้าโปรโมชั่นหรือไม่ (รวมถึงของแถม และกล่องสุ่ม) ---
+                    bool isPromo = cartItem.menu.id.endsWith('_PROMO') || 
+                                   cartItem.menu.id.endsWith('_FREE') || 
+                                   cartItem.menu.id.contains('GACHA'); // กล่องสุ่ม
 
                     return Row(
                       children: [
@@ -291,16 +287,17 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                               InkWell(onTap: () => cart.removeSingleItem(cartItem.key), child: const Padding(padding: EdgeInsets.symmetric(horizontal: 8), child: Text("-", style: TextStyle(fontSize: 20)))),
                               Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(border: Border.symmetric(vertical: BorderSide(color: Colors.grey.shade300))), child: Text("${cartItem.quantity}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))),
                               
-                              // --- 🔥 ปุ่มบวก: ถ้าเป็นโปรโมชั่น ห้ามกด ---
+                              // --- 🔥 ปุ่มบวก: ถ้าเป็น Promo/Free/Gacha ห้ามกด และแสดงแจ้งเตือน ---
                               InkWell(
                                 onTap: isPromo 
                                     ? () {
                                         ScaffoldMessenger.of(context).hideCurrentSnackBar(); 
-                                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("สินค้าโปรโมชั่นจำกัด 1 ชิ้นต่อออเดอร์ หากต้องการเพิ่มกรุณาสั่งแบบราคาปกติ"), duration: Duration(seconds: 2)));
+                                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("สินค้าโปรโมชั่น/กิจกรรม จำกัด 1 ชิ้นต่อออเดอร์"), duration: Duration(seconds: 2)));
                                       } 
                                     : () => cart.addQuantity(cartItem.key),
                                 child: Padding(
                                   padding: const EdgeInsets.symmetric(horizontal: 8), 
+                                  // เปลี่ยนสีเป็นสีเทาถ้ากดไม่ได้
                                   child: Text("+", style: TextStyle(fontSize: 20, color: isPromo ? Colors.grey : Colors.green))
                                 )
                               ),
@@ -323,7 +320,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             child: Column(
               children: [
                 _buildSummaryRow("ยอดรวม", totalAmount),
-                InkWell(onTap: () => _showPromotionDialog(items, totalAmount), child: Padding(padding: const EdgeInsets.symmetric(vertical: 4), child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Row(children: [const Text("ส่วนลด / โปรโมชั่น", style: TextStyle(color: Colors.grey)), const SizedBox(width: 5), const Icon(Icons.local_offer, size: 14, color: Colors.orange), if (_discountNote.isNotEmpty) Text(" ($_discountNote)", style: const TextStyle(fontSize: 12, color: Colors.blue))]), Text("- ฿${_discountAmount.toStringAsFixed(0)}", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red))]))),
+                InkWell(onTap: widget.isCustomer ? null : () => _showPromotionDialog(items, totalAmount), child: Padding(padding: const EdgeInsets.symmetric(vertical: 4), child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Row(children: [const Text("ส่วนลด / โปรโมชั่น", style: TextStyle(color: Colors.grey)), const SizedBox(width: 5), if (!widget.isCustomer) const Icon(Icons.local_offer, size: 14, color: Colors.orange), if (_discountNote.isNotEmpty) Text(" ($_discountNote)", style: const TextStyle(fontSize: 12, color: Colors.blue))]), Text("- ฿${_discountAmount.toStringAsFixed(0)}", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red))]))),
                 const Divider(),
                 Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text("ยอดรวมทั้งหมด", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF5D4037))), Text("฿${finalTotal.toStringAsFixed(0)}", style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF5D4037)))]),
                 const SizedBox(height: 20),
