@@ -8,14 +8,12 @@ class AuthService {
 
   User? get currentUser => _auth.currentUser;
 
-  // --- 🔥 1. แก้ไขฟังก์ชัน signIn ให้บันทึก Log ---
   Future<User?> signIn(String email, String password) async {
     try {
       UserCredential result = await _auth.signInWithEmailAndPassword(email: email, password: password);
       User? user = result.user;
 
       if (user != null) {
-        // บันทึกประวัติการเข้าสู่ระบบ
         await _recordLoginLog(user);
       }
       return user;
@@ -24,10 +22,8 @@ class AuthService {
     }
   }
 
-  // --- 🔥 ฟังก์ชันช่วยบันทึก Log ลง Firestore ---
   Future<void> _recordLoginLog(User user) async {
     try {
-      // ดึงข้อมูลชื่อและตำแหน่งล่าสุดจาก DB
       var doc = await _db.collection('users').doc(user.uid).get();
       String name = 'Unknown';
       String role = 'staff';
@@ -44,14 +40,14 @@ class AuthService {
         'email': user.email,
         'role': role,
         'timestamp': FieldValue.serverTimestamp(),
-        'type': 'login', // ระบุประเภทเผื่ออนาคตมี logout
+        'type': 'login',
       });
     } catch (e) {
       print("Error recording login log: $e");
     }
   }
 
-  // (ส่วนอื่นๆ เหมือนเดิม)
+  // ฟังก์ชันสำหรับ Manager/Owner สร้างบัญชีให้พนักงาน (เลือกยศได้)
   Future<void> createEmployee(String email, String password, String name, String role, String photoUrl) async {
     FirebaseApp? secondaryApp;
     try {
@@ -73,16 +69,23 @@ class AuthService {
 
   Future<void> _saveUserToFirestore(String uid, String name, String email, String photoUrl, String role) async {
     await _db.collection('users').doc(uid).set({
-      'uid': uid, 'name': name, 'email': email, 'photoUrl': photoUrl.isEmpty ? 'https://cdn-icons-png.flaticon.com/512/149/149071.png' : photoUrl, 'role': role, 'createdAt': FieldValue.serverTimestamp(),
+      'uid': uid, 
+      'name': name, 
+      'email': email, 
+      'photoUrl': photoUrl.isEmpty ? 'https://cdn-icons-png.flaticon.com/512/149/149071.png' : photoUrl, 
+      'role': role, 
+      'createdAt': FieldValue.serverTimestamp(),
     });
   }
   
+  // --- 🔥 ฟังก์ชันสมัครสมาชิกเอง (Register Screen) ---
   Future<User?> register(String email, String password, String name, String photoUrl) async {
     try {
       UserCredential result = await _auth.createUserWithEmailAndPassword(email: email, password: password);
       User? user = result.user;
       if (user != null) {
-        await _saveUserToFirestore(user.uid, name, email, photoUrl, 'owner');
+        // ✅ บังคับให้เป็น 'staff' เสมอ สำหรับการสมัครเอง
+        await _saveUserToFirestore(user.uid, name, email, photoUrl, 'staff');
       }
       return user;
     } catch (e) {

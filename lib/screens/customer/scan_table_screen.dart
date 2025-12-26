@@ -44,7 +44,7 @@ class ScanTableScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: const Color(0xFFF9F9F9),
       appBar: AppBar(
-        title: const Text("สแกน QR-Code (ลูกค้า)", style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text("สั่งเครื่องดื่ม (ลูกค้า)", style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: const Color(0xFF6F4E37),
         foregroundColor: Colors.white,
         centerTitle: true,

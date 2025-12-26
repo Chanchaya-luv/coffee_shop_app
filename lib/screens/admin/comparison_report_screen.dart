@@ -413,7 +413,7 @@ class _ComparisonReportScreenState extends State<ComparisonReportScreen> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      "เติบโต (Growth): ${growthPercent.toStringAsFixed(2)}%",
+                                      "Growth: ${growthPercent.toStringAsFixed(2)}%",
                                       style: TextStyle(fontSize: 14, color: growthColor),
                                     ),
                                     Text(

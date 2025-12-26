@@ -12,7 +12,7 @@ class ManageAccountsScreen extends StatefulWidget {
 
 class _ManageAccountsScreenState extends State<ManageAccountsScreen> {
   final String currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
-  String _currentUserRole = 'staff'; // ค่าเริ่มต้นให้เป็นแค่พนักงานก่อน (ปลอดภัยไว้ก่อน)
+  String _currentUserRole = 'staff'; 
   bool _isLoadingRole = true;
 
   @override
@@ -21,7 +21,6 @@ class _ManageAccountsScreenState extends State<ManageAccountsScreen> {
     _checkCurrentUserRole();
   }
 
-  // --- 🔥 ฟังก์ชันเช็คยศคนล็อกอิน ---
   Future<void> _checkCurrentUserRole() async {
     try {
       var doc = await FirebaseFirestore.instance.collection('users').doc(currentUserId).get();
@@ -37,7 +36,6 @@ class _ManageAccountsScreenState extends State<ManageAccountsScreen> {
     }
   }
 
-  // เช็คว่ามีสิทธิ์บริหารจัดการไหม (ต้องเป็น manager หรือ owner)
   bool get _canManage {
     return _currentUserRole == 'manager' || _currentUserRole == 'owner';
   }
@@ -68,18 +66,24 @@ class _ManageAccountsScreenState extends State<ManageAccountsScreen> {
                 TextField(controller: photoCtrl, decoration: const InputDecoration(labelText: "ลิงก์รูป (URL)", prefixIcon: Icon(Icons.image))),
                 const SizedBox(height: 15),
                 
-                // เลือกตำแหน่ง
+                // --- 🔥 แก้ไข Dropdown ป้องกัน Error ---
                 DropdownButtonFormField<String>(
                   value: selectedRole,
                   decoration: const InputDecoration(labelText: "ตำแหน่ง / ยศ", border: OutlineInputBorder()),
                   items: [
                     const DropdownMenuItem(value: 'staff', child: Text("พนักงานทั่วไป (Staff)")),
                     const DropdownMenuItem(value: 'manager', child: Text("ผู้จัดการ (Manager)")),
-                    // ให้เฉพาะ Owner เท่านั้นที่ตั้งคนอื่นเป็น Admin ได้ (ป้องกัน Manager ยึดอำนาจ)
-                    if (_currentUserRole == 'owner') // 🔥
+                    
+                    // แสดง Admin ถ้าคนล็อกอินเป็น Owner หรือ ถ้าบัญชีนี้เป็น Admin อยู่แล้ว (กัน Error)
+                    if (_currentUserRole == 'owner' || selectedRole == 'admin') 
                        const DropdownMenuItem(value: 'admin', child: Text("ผู้ดูแลระบบ (Admin)")),
+                    
+                    // แสดง Owner ถ้าบัญชีนี้เป็น Owner อยู่แล้ว (กัน Error)
+                    if (selectedRole == 'owner')
+                       const DropdownMenuItem(value: 'owner', child: Text("เจ้าของร้าน (Owner)")),
                   ],
-                  onChanged: (val) => setState(() => selectedRole = val!),
+                  // ถ้าเป็น Owner ห้ามเปลี่ยนตำแหน่งตัวเอง
+                  onChanged: selectedRole == 'owner' ? null : (val) => setState(() => selectedRole = val!),
                 ),
 
                 if (isEditing) ...[
@@ -165,7 +169,7 @@ class _ManageAccountsScreenState extends State<ManageAccountsScreen> {
 
               String roleText = "พนักงานทั่วไป";
               Color roleColor = Colors.grey;
-              if (role == 'owner') { roleText = "เจ้าของร้าน 👑"; roleColor = Colors.orange; }
+              if (role == 'owner') { roleText = "เจ้าของร้าน"; roleColor = Colors.orange; }
               else if (role == 'manager') { roleText = "ผู้จัดการ"; roleColor = Colors.blue; }
               else if (role == 'admin') { roleText = "แอดมิน"; roleColor = Colors.purple; }
 
@@ -195,7 +199,6 @@ class _ManageAccountsScreenState extends State<ManageAccountsScreen> {
                       )
                     ],
                   ),
-                  // --- 🔥 จุดสำคัญ: ซ่อนปุ่มถ้าไม่ใช่ Manager/Owner ---
                   trailing: _canManage 
                       ? Row(
                           mainAxisSize: MainAxisSize.min,
@@ -204,7 +207,6 @@ class _ManageAccountsScreenState extends State<ManageAccountsScreen> {
                               icon: const Icon(Icons.edit, color: Colors.blue),
                               onPressed: () => _showEmployeeDialog(id: id, data: data),
                             ),
-                            // ห้ามลบเจ้าของร้าน และ ห้ามลบตัวเอง
                             if (role != 'owner' && !isMe)
                               IconButton(
                                 icon: const Icon(Icons.delete_outline, color: Colors.red),
@@ -217,14 +219,13 @@ class _ManageAccountsScreenState extends State<ManageAccountsScreen> {
                               ),
                           ],
                         )
-                      : null, // ถ้าเป็น staff ธรรมดา ไม่โชว์ปุ่มอะไรเลย
+                      : null, 
                 ),
               );
             },
           );
         },
       ),
-      // --- 🔥 ซ่อนปุ่มเพิ่มพนักงาน ถ้าไม่ใช่ Manager/Owner ---
       floatingActionButton: _canManage 
           ? FloatingActionButton.extended(
               backgroundColor: const Color(0xFFA6C48A),
@@ -233,7 +234,7 @@ class _ManageAccountsScreenState extends State<ManageAccountsScreen> {
               icon: const Icon(Icons.person_add),
               label: const Text("เพิ่มพนักงาน"),
             )
-          : null, // Staff เพิ่มไม่ได้
+          : null,
     );
   }
 }
