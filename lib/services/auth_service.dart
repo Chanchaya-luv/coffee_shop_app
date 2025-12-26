@@ -8,32 +8,58 @@ class AuthService {
 
   User? get currentUser => _auth.currentUser;
 
-  // 1. ล็อกอิน
+  // --- 🔥 1. แก้ไขฟังก์ชัน signIn ให้บันทึก Log ---
   Future<User?> signIn(String email, String password) async {
     try {
       UserCredential result = await _auth.signInWithEmailAndPassword(email: email, password: password);
-      return result.user;
+      User? user = result.user;
+
+      if (user != null) {
+        // บันทึกประวัติการเข้าสู่ระบบ
+        await _recordLoginLog(user);
+      }
+      return user;
     } catch (e) {
       rethrow;
     }
   }
 
-  // 2. สร้างพนักงาน (Create)
+  // --- 🔥 ฟังก์ชันช่วยบันทึก Log ลง Firestore ---
+  Future<void> _recordLoginLog(User user) async {
+    try {
+      // ดึงข้อมูลชื่อและตำแหน่งล่าสุดจาก DB
+      var doc = await _db.collection('users').doc(user.uid).get();
+      String name = 'Unknown';
+      String role = 'staff';
+
+      if (doc.exists) {
+        var data = doc.data() as Map<String, dynamic>;
+        name = data['name'] ?? name;
+        role = data['role'] ?? role;
+      }
+
+      await _db.collection('login_logs').add({
+        'uid': user.uid,
+        'name': name,
+        'email': user.email,
+        'role': role,
+        'timestamp': FieldValue.serverTimestamp(),
+        'type': 'login', // ระบุประเภทเผื่ออนาคตมี logout
+      });
+    } catch (e) {
+      print("Error recording login log: $e");
+    }
+  }
+
+  // (ส่วนอื่นๆ เหมือนเดิม)
   Future<void> createEmployee(String email, String password, String name, String role, String photoUrl) async {
     FirebaseApp? secondaryApp;
     try {
-      secondaryApp = await Firebase.initializeApp(
-        name: 'SecondaryApp',
-        options: Firebase.app().options,
-      );
-
-      UserCredential result = await FirebaseAuth.instanceFor(app: secondaryApp)
-          .createUserWithEmailAndPassword(email: email, password: password);
-      
+      secondaryApp = await Firebase.initializeApp(name: 'SecondaryApp', options: Firebase.app().options);
+      UserCredential result = await FirebaseAuth.instanceFor(app: secondaryApp).createUserWithEmailAndPassword(email: email, password: password);
       if (result.user != null) {
         await _saveUserToFirestore(result.user!.uid, name, email, photoUrl, role);
       }
-      
       await secondaryApp.delete();
     } catch (e) {
       await secondaryApp?.delete();
@@ -41,28 +67,16 @@ class AuthService {
     }
   }
 
-  // --- 🔥 3. ฟังก์ชันแก้ไขข้อมูลพนักงาน (Update) ---
   Future<void> updateEmployeeData(String uid, String name, String role) async {
-    await _db.collection('users').doc(uid).update({
-      'name': name,
-      'role': role,
-    });
+    await _db.collection('users').doc(uid).update({'name': name, 'role': role});
   }
 
   Future<void> _saveUserToFirestore(String uid, String name, String email, String photoUrl, String role) async {
     await _db.collection('users').doc(uid).set({
-      'uid': uid,
-      'name': name,
-      'email': email,
-      'photoUrl': photoUrl.isEmpty 
-          ? 'https://cdn-icons-png.flaticon.com/512/149/149071.png' 
-          : photoUrl,
-      'role': role, 
-      'createdAt': FieldValue.serverTimestamp(),
+      'uid': uid, 'name': name, 'email': email, 'photoUrl': photoUrl.isEmpty ? 'https://cdn-icons-png.flaticon.com/512/149/149071.png' : photoUrl, 'role': role, 'createdAt': FieldValue.serverTimestamp(),
     });
   }
   
-  // สมัครสมาชิกเอง (Owner)
   Future<User?> register(String email, String password, String name, String photoUrl) async {
     try {
       UserCredential result = await _auth.createUserWithEmailAndPassword(email: email, password: password);
@@ -76,7 +90,6 @@ class AuthService {
     }
   }
 
-  // แก้ไขโปรไฟล์ตัวเอง
   Future<void> updateProfile({String? name, String? photoUrl}) async {
     User? user = _auth.currentUser;
     if (user != null) {

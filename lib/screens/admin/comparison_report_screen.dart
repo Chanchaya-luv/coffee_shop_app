@@ -1,13 +1,20 @@
+import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:fl_chart/fl_chart.dart';
 
-// --- เพิ่ม Import สำหรับ PDF ---
+// --- Import สำหรับ PDF ---
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:intl/date_symbol_data_local.dart';
+
+// --- 🔥 Import สำหรับ Export/Email ---
+import 'package:path_provider/path_provider.dart';
+import 'package:flutter_email_sender/flutter_email_sender.dart';
+import 'package:share_plus/share_plus.dart';
 
 class ComparisonReportScreen extends StatefulWidget {
   const ComparisonReportScreen({super.key});
@@ -20,9 +27,14 @@ class _ComparisonReportScreenState extends State<ComparisonReportScreen> {
   // ปีปัจจุบันและปีก่อนหน้า (พ.ศ. = ค.ศ. + 543)
   int _year1 = DateTime.now().year - 1; // ปีเก่า (เช่น 2024)
   int _year2 = DateTime.now().year;     // ปีใหม่ (เช่น 2025)
+  
+  // ตัวแปรคุมสถานะ Loading
+  bool _isProcessing = false;
 
-  // --- ฟังก์ชันสร้าง PDF รายงานเปรียบเทียบ ---
-  Future<void> _printReport({
+  final List<String> _months = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
+
+  // --- 🔥 1. ฟังก์ชันสร้าง PDF (Bytes) ---
+  Future<Uint8List> _generatePdfBytes({
     required Map<int, double> dataYear1,
     required Map<int, double> dataYear2,
     required double totalYear1,
@@ -34,7 +46,11 @@ class _ComparisonReportScreenState extends State<ComparisonReportScreen> {
 
     final doc = pw.Document();
     final String printDate = DateFormat('d MMMM yyyy HH:mm', 'th').format(DateTime.now());
-    final months = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
+
+    // คำนวณส่วนต่างและเปอร์เซ็นต์
+    double diff = totalYear2 - totalYear1;
+    double percent = (totalYear1 == 0) ? (totalYear2 > 0 ? 100 : 0) : (diff / totalYear1) * 100;
+    String sign = diff >= 0 ? '+' : '';
 
     doc.addPage(
       pw.Page(
@@ -80,8 +96,8 @@ class _ComparisonReportScreenState extends State<ComparisonReportScreen> {
                     pw.Column(children: [
                         pw.Text("ส่วนต่าง (Growth)", style: pw.TextStyle(font: font, fontSize: 12)),
                         pw.Text(
-                          "${totalYear2 >= totalYear1 ? '+' : ''}${NumberFormat('#,##0').format(totalYear2 - totalYear1)}", 
-                          style: pw.TextStyle(font: fontBold, fontSize: 18, color: totalYear2 >= totalYear1 ? PdfColors.green : PdfColors.red)
+                          "$sign${NumberFormat('#,##0').format(diff)} (${percent.toStringAsFixed(2)}%)", 
+                          style: pw.TextStyle(font: fontBold, fontSize: 18, color: diff >= 0 ? PdfColors.green : PdfColors.red)
                         ),
                     ]),
                   ],
@@ -105,17 +121,17 @@ class _ComparisonReportScreenState extends State<ComparisonReportScreen> {
                   ...List.generate(12, (index) {
                     double v1 = dataYear1[index + 1] ?? 0;
                     double v2 = dataYear2[index + 1] ?? 0;
-                    double diff = v2 - v1;
+                    double d = v2 - v1;
                     return [
-                      months[index],
+                      _months[index],
                       NumberFormat('#,##0').format(v1),
                       NumberFormat('#,##0').format(v2),
-                      "${diff > 0 ? '+' : ''}${NumberFormat('#,##0').format(diff)}",
+                      "${d > 0 ? '+' : ''}${NumberFormat('#,##0').format(d)}",
                     ];
                   }),
                 ],
                 columnWidths: {
-                  0: const pw.FlexColumnWidth(2), // เดือนกว้างหน่อย
+                  0: const pw.FlexColumnWidth(2),
                   1: const pw.FlexColumnWidth(1.5),
                   2: const pw.FlexColumnWidth(1.5),
                   3: const pw.FlexColumnWidth(1.5),
@@ -127,7 +143,122 @@ class _ComparisonReportScreenState extends State<ComparisonReportScreen> {
       ),
     );
 
-    await Printing.layoutPdf(onLayout: (PdfPageFormat format) async => doc.save());
+    return doc.save();
+  }
+
+  // --- ฟังก์ชันสั่งพิมพ์ ---
+  Future<void> _printReport({
+    required Map<int, double> dataYear1, required Map<int, double> dataYear2, required double totalYear1, required double totalYear2,
+  }) async {
+    final pdfBytes = await _generatePdfBytes(dataYear1: dataYear1, dataYear2: dataYear2, totalYear1: totalYear1, totalYear2: totalYear2);
+    await Printing.layoutPdf(onLayout: (PdfPageFormat format) async => pdfBytes);
+  }
+
+  // --- 🔥 2. ฟังก์ชัน Export CSV ---
+  Future<void> _exportCsv({required Map<int, double> dataYear1, required Map<int, double> dataYear2}) async {
+    if (_isProcessing) return;
+    setState(() => _isProcessing = true);
+    
+    try {
+      String csvContent = "Month,Year ${_year1 + 543},Year ${_year2 + 543},Difference,Growth (%)\n";
+      
+      for (int i = 0; i < 12; i++) {
+        double v1 = dataYear1[i + 1] ?? 0;
+        double v2 = dataYear2[i + 1] ?? 0;
+        double diff = v2 - v1;
+        double growth = (v1 == 0) ? (v2 > 0 ? 100 : 0) : (diff / v1) * 100;
+
+        csvContent += "${_months[i]},$v1,$v2,$diff,${growth.toStringAsFixed(2)}%\n";
+      }
+
+      final directory = await getTemporaryDirectory();
+      final path = "${directory.path}/comparison_report_${_year1}_vs_${_year2}.csv";
+      final file = File(path);
+      await file.writeAsString(csvContent);
+
+      await Share.shareXFiles([XFile(path)], text: 'Comparison Report CSV');
+
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Export Error: $e"), backgroundColor: Colors.red));
+    } finally {
+      if (mounted) setState(() => _isProcessing = false);
+    }
+  }
+
+  // --- 🔥 3. ฟังก์ชันส่งอีเมล (พร้อมไฟล์แนบ) ---
+  Future<void> _processAndSendEmail(
+      BuildContext context,
+      String email,
+      Map<int, double> dataYear1,
+      Map<int, double> dataYear2,
+      double totalYear1,
+      double totalYear2
+  ) async {
+    if (_isProcessing) return;
+    setState(() => _isProcessing = true);
+
+    // หาตำแหน่งปุ่มสำหรับ iPad
+    final box = context.findRenderObject() as RenderBox?;
+    final Rect sharePosition = box != null ? box.localToGlobal(Offset.zero) & box.size : Rect.zero;
+
+    try {
+      // 1. สร้าง PDF
+      final pdfBytes = await _generatePdfBytes(dataYear1: dataYear1, dataYear2: dataYear2, totalYear1: totalYear1, totalYear2: totalYear2);
+      final directory = await getTemporaryDirectory();
+      final file = File('${directory.path}/comparison_report.pdf');
+      await file.writeAsBytes(pdfBytes);
+
+      // 2. จำลองเวลา
+      await Future.delayed(const Duration(seconds: 2));
+
+      // 3. ส่งเมล
+      try {
+        final Email sendEmail = Email(
+          body: 'เรียนเจ้าของร้าน,\n\nแนบไฟล์รายงานเปรียบเทียบยอดขายปี ${_year1 + 543} vs ${_year2 + 543} มาพร้อมกับอีเมลฉบับนี้\n\nขอบคุณครับ',
+          subject: 'รายงานเปรียบเทียบยอดขาย Caffy Coffee',
+          recipients: [email],
+          attachmentPaths: [file.path],
+          isHTML: false,
+        );
+        await FlutterEmailSender.send(sendEmail);
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("เปิดแอปอีเมลสำเร็จ"), backgroundColor: Colors.green));
+      } catch (e) {
+         // Fallback Share
+         await Share.shareXFiles([XFile(file.path)], text: 'รายงานเปรียบเทียบ PDF', sharePositionOrigin: sharePosition);
+         if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("ไม่พบแอปอีเมล -> เปิดเมนูแชร์แทน"), backgroundColor: Colors.orange));
+      }
+
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red));
+    } finally {
+      if (mounted) setState(() => _isProcessing = false);
+    }
+  }
+
+  // Dialog กรอกอีเมล
+  Future<void> _showEmailDialog(BuildContext context, Map<int, double> dataYear1, Map<int, double> dataYear2, double totalYear1, double totalYear2) async {
+    final emailCtrl = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("ส่งรายงานทางอีเมล"),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [const Text("กรุณากรอกอีเมลปลายทาง", style: TextStyle(fontSize: 14, color: Colors.grey)), const SizedBox(height: 15), TextField(controller: emailCtrl, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: "อีเมล", prefixIcon: Icon(Icons.email), border: OutlineInputBorder(), hintText: "example@gmail.com"))]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("ยกเลิก")),
+          Builder(builder: (btnContext) {
+            return ElevatedButton.icon(
+              onPressed: () {
+                if (emailCtrl.text.isNotEmpty) {
+                  Navigator.pop(ctx);
+                  _processAndSendEmail(btnContext, emailCtrl.text.trim(), dataYear1, dataYear2, totalYear1, totalYear2);
+                }
+              },
+              icon: const Icon(Icons.send), label: const Text("ส่ง"), style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6F4E37), foregroundColor: Colors.white)
+            );
+          }),
+        ],
+      ),
+    );
   }
 
   pw.Widget _buildPdfStatBox(String title, double value, pw.Font font, pw.Font fontBold, PdfColor color) {
@@ -142,179 +273,183 @@ class _ComparisonReportScreenState extends State<ComparisonReportScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF9F9F9),
-      appBar: AppBar(
-        title: const Text("เปรียบเทียบยอดขาย", style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: const Color(0xFF6F4E37),
-        foregroundColor: Colors.white,
-        centerTitle: true,
-      ),
-      body: Column(
-        children: [
-          // --- 1. ส่วนเลือกปี ---
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(20)),
-              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                _buildYearSelector("ปีหลัก", _year1, Colors.grey, (val) => setState(() => _year1 = val)),
-                const Icon(Icons.compare_arrows, color: Color(0xFF6F4E37)),
-                _buildYearSelector("ปีเปรียบเทียบ", _year2, const Color(0xFFA6C48A), (val) => setState(() => _year2 = val)),
-              ],
-            ),
+    return Stack(
+      children: [
+        Scaffold(
+          backgroundColor: const Color(0xFFF9F9F9),
+          appBar: AppBar(
+            title: const Text("เปรียบเทียบยอดขาย", style: TextStyle(fontWeight: FontWeight.bold)),
+            backgroundColor: const Color(0xFF6F4E37),
+            foregroundColor: Colors.white,
+            centerTitle: true,
           ),
+          body: Column(
+            children: [
+              // --- 1. ส่วนเลือกปี ---
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: const BorderRadius.vertical(bottom: Radius.circular(20)),
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    _buildYearSelector("ปีหลัก", _year1, Colors.grey, (val) => setState(() => _year1 = val)),
+                    const Icon(Icons.compare_arrows, color: Color(0xFF6F4E37)),
+                    _buildYearSelector("ปีเปรียบเทียบ", _year2, const Color(0xFFA6C48A), (val) => setState(() => _year2 = val)),
+                  ],
+                ),
+              ),
 
-          // --- 2. เนื้อหาและการคำนวณ ---
-          Expanded(
-            child: StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance.collection('orders').snapshots(),
-              builder: (context, snapshot) {
-                if (snapshot.hasError) return const Center(child: Text("เกิดข้อผิดพลาด"));
-                if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+              // --- 2. เนื้อหาและการคำนวณ ---
+              Expanded(
+                child: StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance.collection('orders').snapshots(),
+                  builder: (context, snapshot) {
+                    if (snapshot.hasError) return const Center(child: Text("เกิดข้อผิดพลาด"));
+                    if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
 
-                List<DocumentSnapshot> docs = snapshot.data!.docs;
+                    List<DocumentSnapshot> docs = snapshot.data!.docs;
 
-                // ข้อมูลสำหรับกราฟ (เดือน 1-12)
-                Map<int, double> dataYear1 = {};
-                Map<int, double> dataYear2 = {};
-                double totalYear1 = 0;
-                double totalYear2 = 0;
+                    Map<int, double> dataYear1 = {};
+                    Map<int, double> dataYear2 = {};
+                    double totalYear1 = 0;
+                    double totalYear2 = 0;
 
-                for (var doc in docs) {
-                  Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-                  if (data['status'] == 'cancelled') continue;
-                  if (data['timestamp'] == null) continue;
+                    for (var doc in docs) {
+                      Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+                      if (data['status'] == 'cancelled') continue;
+                      if (data['timestamp'] == null) continue;
 
-                  DateTime date = (data['timestamp'] as Timestamp).toDate();
-                  double price = 0.0;
-                  if (data['totalPrice'] != null) price = double.tryParse(data['totalPrice'].toString()) ?? 0.0;
+                      DateTime date = (data['timestamp'] as Timestamp).toDate();
+                      double price = 0.0;
+                      if (data['totalPrice'] != null) price = double.tryParse(data['totalPrice'].toString()) ?? 0.0;
 
-                  // แยกยอดตามปี
-                  if (date.year == _year1) {
-                    dataYear1[date.month] = (dataYear1[date.month] ?? 0) + price;
-                    totalYear1 += price;
-                  } else if (date.year == _year2) {
-                    dataYear2[date.month] = (dataYear2[date.month] ?? 0) + price;
-                    totalYear2 += price;
-                  }
-                }
+                      if (date.year == _year1) {
+                        dataYear1[date.month] = (dataYear1[date.month] ?? 0) + price;
+                        totalYear1 += price;
+                      } else if (date.year == _year2) {
+                        dataYear2[date.month] = (dataYear2[date.month] ?? 0) + price;
+                        totalYear2 += price;
+                      }
+                    }
 
-                return SingleChildScrollView(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    children: [
-                      // --- กราฟเปรียบเทียบ ---
-                      Container(
-                        height: 350,
-                        padding: const EdgeInsets.fromLTRB(10, 20, 20, 10),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Padding(
-                              padding: EdgeInsets.only(left: 10, bottom: 20),
-                              child: Text("กราฟเปรียบเทียบรายเดือน (บาท)", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
+                    double diff = totalYear2 - totalYear1;
+                    double growthPercent = (totalYear1 == 0) ? (totalYear2 > 0 ? 100.0 : 0.0) : (diff / totalYear1) * 100;
+                    
+                    String sign = diff >= 0 ? '+' : '';
+                    Color growthColor = diff >= 0 ? Colors.green[800]! : Colors.red[800]!;
+                    IconData growthIcon = diff >= 0 ? Icons.trending_up : Icons.trending_down;
+
+                    return SingleChildScrollView(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        children: [
+                          Container(
+                            height: 350,
+                            padding: const EdgeInsets.fromLTRB(10, 20, 20, 10),
+                            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)]),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Padding(padding: EdgeInsets.only(left: 10, bottom: 20), child: Text("กราฟเปรียบเทียบรายเดือน (บาท)", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey))),
+                                Expanded(child: _buildComparisonChart(dataYear1, dataYear2)),
+                                const SizedBox(height: 10),
+                                Row(mainAxisAlignment: MainAxisAlignment.center, children: [_buildLegendItem("ปี ${_year1 + 543}", Colors.grey), const SizedBox(width: 20), _buildLegendItem("ปี ${_year2 + 543}", const Color(0xFFA6C48A))])
+                              ],
                             ),
-                            Expanded(
-                              child: _buildComparisonChart(dataYear1, dataYear2),
-                            ),
-                            const SizedBox(height: 10),
-                            // Legend
-                            Row(
+                          ),
+
+                          const SizedBox(height: 20),
+
+                          Row(children: [Expanded(child: _buildSummaryCard("ยอดรวมปี ${_year1 + 543}", totalYear1, Colors.grey)), const SizedBox(width: 15), Expanded(child: _buildSummaryCard("ยอดรวมปี ${_year2 + 543}", totalYear2, const Color(0xFFA6C48A)))]),
+
+                          const SizedBox(height: 10),
+                          
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(15),
+                            decoration: BoxDecoration(color: diff >= 0 ? Colors.green[50] : Colors.red[50], borderRadius: BorderRadius.circular(12), border: Border.all(color: diff >= 0 ? Colors.green : Colors.red, width: 0.5)),
+                            child: Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                _buildLegendItem("ปี ${_year1 + 543}", Colors.grey),
-                                const SizedBox(width: 20),
-                                _buildLegendItem("ปี ${_year2 + 543}", const Color(0xFFA6C48A)),
+                                Icon(growthIcon, color: growthColor, size: 32),
+                                const SizedBox(width: 15),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text("เติบโต (Growth): ${growthPercent.toStringAsFixed(2)}%", style: TextStyle(fontSize: 14, color: growthColor)),
+                                    Text("$sign${NumberFormat('#,##0').format(diff)} บาท", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: growthColor)),
+                                  ],
+                                ),
                               ],
-                            )
-                          ],
-                        ),
-                      ),
+                            ),
+                          ),
 
-                      const SizedBox(height: 20),
+                          const SizedBox(height: 30),
 
-                      // --- สรุปตัวเลข ---
-                      Row(
-                        children: [
-                          Expanded(child: _buildSummaryCard("ยอดรวมปี ${_year1 + 543}", totalYear1, Colors.grey)),
-                          const SizedBox(width: 15),
-                          Expanded(child: _buildSummaryCard("ยอดรวมปี ${_year2 + 543}", totalYear2, const Color(0xFFA6C48A))),
+                          // --- 🔥 ปุ่ม Action 3 ปุ่ม ---
+                          Row(
+                            children: [
+                              Expanded(
+                                child: ElevatedButton.icon(
+                                  onPressed: _isProcessing ? null : () => _printReport(dataYear1: dataYear1, dataYear2: dataYear2, totalYear1: totalYear1, totalYear2: totalYear2),
+                                  icon: const Icon(Icons.print),
+                                  label: const Text("PDF", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6F4E37), foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), padding: const EdgeInsets.symmetric(vertical: 12)),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Builder(builder: (btnContext) {
+                                  return ElevatedButton.icon(
+                                    onPressed: _isProcessing ? null : () => _showEmailDialog(btnContext, dataYear1, dataYear2, totalYear1, totalYear2),
+                                    icon: const Icon(Icons.email),
+                                    label: const Text("Email", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                                    style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[700], foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), padding: const EdgeInsets.symmetric(vertical: 12)),
+                                  );
+                                }),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: ElevatedButton.icon(
+                                  onPressed: _isProcessing ? null : () => _exportCsv(dataYear1: dataYear1, dataYear2: dataYear2),
+                                  icon: const Icon(Icons.file_download),
+                                  label: const Text("Excel", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green[700], foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), padding: const EdgeInsets.symmetric(vertical: 12)),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 50),
                         ],
                       ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
 
-                      const SizedBox(height: 10),
-                      
-                      // ส่วนต่าง (Growth)
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(15),
-                        decoration: BoxDecoration(
-                          color: totalYear2 >= totalYear1 ? Colors.green[50] : Colors.red[50],
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: totalYear2 >= totalYear1 ? Colors.green : Colors.red, width: 0.5),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              totalYear2 >= totalYear1 ? Icons.trending_up : Icons.trending_down,
-                              color: totalYear2 >= totalYear1 ? Colors.green : Colors.red,
-                            ),
-                            const SizedBox(width: 10),
-                            Text(
-                              "ส่วนต่าง: ${totalYear2 >= totalYear1 ? '+' : ''}${NumberFormat('#,##0').format(totalYear2 - totalYear1)} บาท",
-                              style: TextStyle(
-                                fontSize: 18, 
-                                fontWeight: FontWeight.bold, 
-                                color: totalYear2 >= totalYear1 ? Colors.green[800] : Colors.red[800]
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      const SizedBox(height: 30),
-
-                      // --- 🔥 ปุ่มพิมพ์รายงาน PDF ---
-                      SizedBox(
-                        width: double.infinity,
-                        height: 55,
-                        child: ElevatedButton.icon(
-                          onPressed: () => _printReport(
-                            dataYear1: dataYear1,
-                            dataYear2: dataYear2,
-                            totalYear1: totalYear1,
-                            totalYear2: totalYear2,
-                          ),
-                          icon: const Icon(Icons.print),
-                          label: const Text("พิมพ์รายงานเปรียบเทียบ (PDF)", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF6F4E37),
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 50),
-                    ],
-                  ),
-                );
-              },
+        // Loading Overlay
+        if (_isProcessing)
+          Container(
+            color: Colors.black45,
+            child: const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(color: Colors.white),
+                  SizedBox(height: 20),
+                  Text("กำลังดำเนินการ...", style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                ],
+              ),
             ),
           ),
-        ],
-      ),
+      ],
     );
   }
 
@@ -441,13 +576,17 @@ class _ComparisonReportScreenState extends State<ComparisonReportScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 5)],
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 5)]
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+          Text(title, style: TextStyle(color: Colors.grey[600], fontSize: 12)),
           const SizedBox(height: 5),
-          Text("฿${NumberFormat('#,##0').format(value)}", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color)),
+          Text(
+            "฿${NumberFormat('#,##0').format(value)}", 
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: color)
+          ),
         ],
       ),
     );

@@ -19,6 +19,7 @@ import 'generic_settings_screen.dart';
 import 'help_center_screen.dart';
 import '../admin/promotion_management_screen.dart';
 import '../admin/expense_screen.dart';
+import 'login_history_screen.dart';
 
 class SettingScreen extends StatefulWidget {
   const SettingScreen({super.key});
@@ -55,6 +56,10 @@ class _SettingScreenState extends State<SettingScreen> {
   // เช็คว่ามีสิทธิ์แก้ไขหรือไม่ (Manager/Owner แก้ได้, Staff แก้ไม่ได้)
   bool get _canEdit {
     return _currentUserRole == 'manager' || _currentUserRole == 'owner';
+  }
+
+  bool get _canViewLogs {
+    return _currentUserRole == 'manager' || _currentUserRole == 'owner' || _currentUserRole == 'admin';
   }
 
   void _confirmSignOut(BuildContext context) {
@@ -193,6 +198,14 @@ class _SettingScreenState extends State<SettingScreen> {
                         onTap: () {
                           if (_canEdit) _navigate(context, const ManageAccountsScreen());
                           else ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("⛔️ ไม่มีสิทธิ์เข้าถึง"), backgroundColor: Colors.red));
+                        }
+                      ),
+                      _buildSettingItem(
+                        Icons.security, "ประวัติการเข้าใช้งาน", 
+                        isRestricted: !_canViewLogs, // ล็อกถ้าไม่ใช่ Manager/Owner/Admin
+                        onTap: () { 
+                          if (_canViewLogs) _navigate(context, const LoginHistoryScreen()); 
+                          else ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("⛔️ ไม่มีสิทธิ์เข้าถึง"), backgroundColor: Colors.red)); 
                         }
                       ),
                       _buildSettingItem(Icons.vpn_key_outlined, "เปลี่ยนรหัสผ่าน / แก้ไขข้อมูล", showDivider: false, onTap: () => _navigate(context, const EditProfileScreen())),

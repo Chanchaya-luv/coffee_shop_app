@@ -627,6 +627,7 @@ class _ReportScreenState extends State<ReportScreen> {
       spots.add(FlSpot(i.toDouble(), data[i] ?? 0));
     }
 
+// กราฟ
     return LineChart(
       LineChartData(
         gridData: FlGridData(show: true, drawVerticalLine: false, horizontalInterval: maxY / 5, getDrawingHorizontalLine: (value) => FlLine(color: Colors.grey.shade200, strokeWidth: 1)),

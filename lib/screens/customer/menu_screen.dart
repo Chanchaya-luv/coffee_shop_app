@@ -11,6 +11,7 @@ import '../common/product_customize_dialog.dart';
 import 'mood_recommendation_screen.dart';
 // --- 🔥 เพิ่ม Import หน้ากล่องสุ่ม ---
 import 'mystery_box_screen.dart';
+import '../common/visual_product_customize_dialog.dart';
 
 class MenuScreen extends StatefulWidget {
   final String tableNumber; 
@@ -22,13 +23,13 @@ class MenuScreen extends StatefulWidget {
 }
 
 class _MenuScreenState extends State<MenuScreen> {
-  final List<String> _categories = ["กาแฟ", "ชา", "นมสด", "ผลไม้", "เบเกอรี่"];
+  final List<String> _categories = ["กาแฟ", "ชา", "นมสด","เบเกอรี่"];
   String _selectedCategory = "ทั้งหมด"; 
 
   // --- 🔥 ฟังก์ชันเปิดหน้าต่างเลือกตัวเลือก ---
   void _openCustomizeDialog(MenuItem menu) {
     // 1. เช็คหมวดหมู่ที่ไม่ต้องเลือก Option
-    if (['เบเกอรี่', 'ขนม', 'เค้ก', 'ของหวาน', 'ผลไม้'].contains(menu.category)) {
+    if (['เบเกอรี่', 'ขนม', 'เค้ก', 'ของหวาน'].contains(menu.category)) {
       Provider.of<CartProvider>(context, listen: false).addItem(
         menu, 
         sweetness: '-', 
@@ -46,7 +47,7 @@ class _MenuScreenState extends State<MenuScreen> {
     // 2. ถ้าเป็นหมวดอื่นๆ ให้เปิด Dialog
     showDialog(
       context: context,
-      builder: (context) => ProductCustomizeDialog(
+      builder: (context) => VisualProductCustomizeDialog(
         menu: menu,
         onConfirm: (sweetness, milk) {
           Provider.of<CartProvider>(context, listen: false).addItem(menu, sweetness: sweetness, milk: milk);
