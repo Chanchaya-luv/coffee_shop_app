@@ -313,6 +313,7 @@ class _ComparisonReportScreenState extends State<ComparisonReportScreen> {
 
                     List<DocumentSnapshot> docs = snapshot.data!.docs;
 
+                    // ข้อมูลสำหรับกราฟ (เดือน 1-12)
                     Map<int, double> dataYear1 = {};
                     Map<int, double> dataYear2 = {};
                     double totalYear1 = 0;
@@ -327,6 +328,7 @@ class _ComparisonReportScreenState extends State<ComparisonReportScreen> {
                       double price = 0.0;
                       if (data['totalPrice'] != null) price = double.tryParse(data['totalPrice'].toString()) ?? 0.0;
 
+                      // แยกยอดตามปี
                       if (date.year == _year1) {
                         dataYear1[date.month] = (dataYear1[date.month] ?? 0) + price;
                         totalYear1 += price;
@@ -347,31 +349,61 @@ class _ComparisonReportScreenState extends State<ComparisonReportScreen> {
                       padding: const EdgeInsets.all(20),
                       child: Column(
                         children: [
+                          // --- กราฟเปรียบเทียบ ---
                           Container(
                             height: 350,
                             padding: const EdgeInsets.fromLTRB(10, 20, 20, 10),
-                            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)]),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
+                            ),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Padding(padding: EdgeInsets.only(left: 10, bottom: 20), child: Text("กราฟเปรียบเทียบรายเดือน (บาท)", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey))),
-                                Expanded(child: _buildComparisonChart(dataYear1, dataYear2)),
+                                const Padding(
+                                  padding: EdgeInsets.only(left: 10, bottom: 20),
+                                  child: Text("กราฟเปรียบเทียบรายเดือน (บาท)", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
+                                ),
+                                Expanded(
+                                  child: _buildComparisonChart(dataYear1, dataYear2),
+                                ),
                                 const SizedBox(height: 10),
-                                Row(mainAxisAlignment: MainAxisAlignment.center, children: [_buildLegendItem("ปี ${_year1 + 543}", Colors.grey), const SizedBox(width: 20), _buildLegendItem("ปี ${_year2 + 543}", const Color(0xFFA6C48A))])
+                                // Legend
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    _buildLegendItem("ปี ${_year1 + 543}", Colors.grey),
+                                    const SizedBox(width: 20),
+                                    _buildLegendItem("ปี ${_year2 + 543}", const Color(0xFFA6C48A)),
+                                  ],
+                                )
                               ],
                             ),
                           ),
 
                           const SizedBox(height: 20),
 
-                          Row(children: [Expanded(child: _buildSummaryCard("ยอดรวมปี ${_year1 + 543}", totalYear1, Colors.grey)), const SizedBox(width: 15), Expanded(child: _buildSummaryCard("ยอดรวมปี ${_year2 + 543}", totalYear2, const Color(0xFFA6C48A)))]),
+                          // --- สรุปตัวเลข ---
+                          Row(
+                            children: [
+                              Expanded(child: _buildSummaryCard("ยอดรวมปี ${_year1 + 543}", totalYear1, Colors.grey)),
+                              const SizedBox(width: 15),
+                              Expanded(child: _buildSummaryCard("ยอดรวมปี ${_year2 + 543}", totalYear2, const Color(0xFFA6C48A))),
+                            ],
+                          ),
 
                           const SizedBox(height: 10),
                           
+                          // 🔥 ส่วนต่าง (Growth) พร้อม %
                           Container(
                             width: double.infinity,
                             padding: const EdgeInsets.all(15),
-                            decoration: BoxDecoration(color: diff >= 0 ? Colors.green[50] : Colors.red[50], borderRadius: BorderRadius.circular(12), border: Border.all(color: diff >= 0 ? Colors.green : Colors.red, width: 0.5)),
+                            decoration: BoxDecoration(
+                              color: diff >= 0 ? Colors.green[50] : Colors.red[50],
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: diff >= 0 ? Colors.green : Colors.red, width: 0.5),
+                            ),
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
@@ -380,8 +412,18 @@ class _ComparisonReportScreenState extends State<ComparisonReportScreen> {
                                 Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text("เติบโต (Growth): ${growthPercent.toStringAsFixed(2)}%", style: TextStyle(fontSize: 14, color: growthColor)),
-                                    Text("$sign${NumberFormat('#,##0').format(diff)} บาท", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: growthColor)),
+                                    Text(
+                                      "เติบโต (Growth): ${growthPercent.toStringAsFixed(2)}%",
+                                      style: TextStyle(fontSize: 14, color: growthColor),
+                                    ),
+                                    Text(
+                                      "$sign${NumberFormat('#,##0').format(diff)} บาท",
+                                      style: TextStyle(
+                                        fontSize: 22, 
+                                        fontWeight: FontWeight.bold, 
+                                        color: growthColor
+                                      ),
+                                    ),
                                   ],
                                 ),
                               ],
@@ -510,10 +552,9 @@ class _ComparisonReportScreenState extends State<ComparisonReportScreen> {
               getTitlesWidget: (value, meta) {
                 const months = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
                 int index = value.toInt() - 1;
+                // --- 🔥 แก้ไข: แสดงครบ 12 เดือน (ลบเงื่อนไข % 2) ---
                 if (index >= 0 && index < 12) {
-                  if (index % 2 == 0) {
-                    return SideTitleWidget(axisSide: meta.axisSide, child: Text(months[index], style: const TextStyle(fontSize: 10, color: Colors.grey)));
-                  }
+                   return SideTitleWidget(axisSide: meta.axisSide, child: Text(months[index], style: const TextStyle(fontSize: 10, color: Colors.grey)));
                 }
                 return const SizedBox();
               },

@@ -300,7 +300,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     switch (status) { case 'pending': return Colors.orange; case 'cooking': return Colors.blue; case 'served': return Colors.purple; case 'completed': return Colors.green; default: return Colors.grey; }
   }
   String _getStatusText(String status) {
-    switch (status) { case 'pending': return "รอการชำระ/ยืนยัน"; case 'cooking': return "กำลังทำ (Paid)"; case 'served': return "พร้อมเสิร์ฟ"; case 'completed': return "เสร็จสิ้น"; default: return status; }
+    switch (status) { case 'pending': return "รอการชำระ/ยืนยัน"; case 'cooking': return "กำลังทำ"; case 'served': return "พร้อมเสิร์ฟ"; case 'completed': return "เสร็จสิ้น"; default: return status; }
   }
   IconData _getStatusIcon(String status) {
     switch (status) { case 'pending': return Icons.pending_actions; case 'cooking': return Icons.soup_kitchen; case 'served': return Icons.room_service; case 'completed': return Icons.check_circle; default: return Icons.help; }

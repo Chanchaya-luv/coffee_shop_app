@@ -246,7 +246,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     );
                   },
                   icon: const Icon(Icons.qr_code_scanner, color: Color(0xFFA6C48A)),
-                  label: const Text("สแกนเพื่อสั่งอาหาร (ลูกค้า)", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFFA6C48A))),
+                  label: const Text("สแกนเพื่อสั่งเครื่องดื่ม (ลูกค้า)", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFFA6C48A))),
                 ),
               ),
             ],

@@ -32,7 +32,7 @@ class _HomeScreenState extends State<HomeScreen> {
   
   StreamSubscription? _orderSubscription;
   bool _isFirstLoad = true; 
-  int _notificationCount = 0; // เก็บไว้ใช้กับ SnackBar แต่ไม่โชว์ Badge
+  int _notificationCount = 0; 
 
   @override
   void initState() {
@@ -61,13 +61,15 @@ class _HomeScreenState extends State<HomeScreen> {
         .snapshots()
         .listen((snapshot) {
 
+      // --- 🔥 1. อัปเดตตัวเลขแจ้งเตือนให้ตรงกับจำนวนจริงเสมอ ---
+      if (mounted) {
+        setState(() {
+          _notificationCount = snapshot.docs.length;
+        });
+      }
+
       if (_isFirstLoad) {
-        if (mounted) {
-          setState(() {
-            _notificationCount = snapshot.docs.length;
-            _isFirstLoad = false;
-          });
-        }
+        _isFirstLoad = false;
         return;
       }
 
@@ -81,8 +83,7 @@ class _HomeScreenState extends State<HomeScreen> {
           final isCurrentRoute = ModalRoute.of(context)?.isCurrent ?? false;
           if (!isCurrentRoute) return;
 
-          setState(() => _notificationCount++);
-
+          // แสดง SnackBar แจ้งเตือนเมื่อมีออเดอร์ใหม่เข้ามา
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               behavior: SnackBarBehavior.floating,
@@ -139,11 +140,21 @@ class _HomeScreenState extends State<HomeScreen> {
         selectedItemColor: const Color(0xFFA6C48A),
         unselectedItemColor: Colors.grey,
         showUnselectedLabels: true,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.receipt_long), label: 'Orders'),
-          BottomNavigationBarItem(icon: Icon(Icons.bar_chart), label: 'Report'),
-          BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Setting'),
+        // --- 🔥 2. เพิ่ม Badge บนไอคอน Orders ---
+        items: [
+          const BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
+          BottomNavigationBarItem(
+            icon: Badge(
+              isLabelVisible: _notificationCount > 0, // ซ่อนถ้าเป็น 0
+              label: Text('$_notificationCount'), // ตัวเลข
+              backgroundColor: Colors.red,
+              textColor: Colors.white,
+              child: const Icon(Icons.receipt_long),
+            ),
+            label: 'Orders',
+          ),
+          const BottomNavigationBarItem(icon: Icon(Icons.bar_chart), label: 'Report'),
+          const BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Setting'),
         ],
       ),
     );
@@ -158,16 +169,14 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildHeader(), // ส่วนหัวที่ปรับแก้แล้ว
+              _buildHeader(),
               Padding(
                 padding: const EdgeInsets.all(20.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // --- 🔥 ลบ Text("Home") ออกแล้วครับ ---
-                    
+                    const SizedBox(height: 10),
                     _buildRealTimeStats(isTablet), 
-                    
                     const SizedBox(height: 30),
                     _buildMenuGrid(context, isTablet),
                   ],
@@ -190,12 +199,11 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // ฝั่งซ้าย: แสดงรูปโปรไฟล์ และ ชื่อผู้ใช้ (ดึงจาก Firebase)
           StreamBuilder<DocumentSnapshot>(
             stream: FirebaseFirestore.instance.collection('users').doc(user?.uid).snapshots(),
             builder: (context, snapshot) {
-              String name = "ผู้ใช้งาน"; // ชื่อเริ่มต้น
-              String imageUrl = "https://img5.pic.in.th/file/secure-sv1/05871915-7cac-440c-9a52-17e6d9d71b4c.md.png"; // รูปเริ่มต้น
+              String name = "ผู้ใช้งาน"; 
+              String imageUrl = "https://img5.pic.in.th/file/secure-sv1/05871915-7cac-440c-9a52-17e6d9d71b4c.md.png"; 
               
               if (snapshot.hasData && snapshot.data!.exists) {
                 var data = snapshot.data!.data() as Map<String, dynamic>;
@@ -226,11 +234,11 @@ class _HomeScreenState extends State<HomeScreen> {
             }
           ),
 
-          // ฝั่งขวา: เหลือแค่ไอคอนระฆัง (ไม่มีตัวเลข และไม่มีรูปวงกลม)
           IconButton(
             icon: const Icon(Icons.notifications_none, color: Colors.white, size: 28), 
+            
             onPressed: () {
-              setState(() => _notificationCount = 0);
+              // ไม่ต้องรีเซ็ต _notificationCount เป็น 0 ที่นี่แล้ว เพราะมันจะ Stream มาจาก DB เอง
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => const NotificationScreen()),
@@ -242,6 +250,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // --- Widget Stats เปรียบเทียบเมื่อวาน ---
   Widget _buildRealTimeStats(bool isTablet) {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance.collection('orders').snapshots(),
@@ -249,9 +258,13 @@ class _HomeScreenState extends State<HomeScreen> {
         double salesToday = 0;
         int ordersToday = 0;
         
+        double salesYesterday = 0;
+        int ordersYesterday = 0;
+        
         if (orderSnapshot.hasData) {
           final now = DateTime.now();
           final todayStr = DateFormat('yyyy-MM-dd').format(now);
+          final yesterdayStr = DateFormat('yyyy-MM-dd').format(now.subtract(const Duration(days: 1)));
 
           for (var doc in orderSnapshot.data!.docs) {
             final data = doc.data() as Map<String, dynamic>;
@@ -261,15 +274,26 @@ class _HomeScreenState extends State<HomeScreen> {
               final date = ts.toDate();
               final dateStr = DateFormat('yyyy-MM-dd').format(date);
               
-              if (dateStr == todayStr) {
-                if (data['status'] != 'cancelled') {
-                  salesToday += (data['totalPrice'] ?? 0).toDouble();
+              if (data['status'] != 'cancelled') {
+                double price = (data['totalPrice'] ?? 0).toDouble();
+                if (dateStr == todayStr) {
+                  salesToday += price;
                   ordersToday += 1;
+                } else if (dateStr == yesterdayStr) {
+                  salesYesterday += price;
+                  ordersYesterday += 1;
                 }
               }
             }
           }
         }
+
+        String salesGrowthStr = _calculateGrowth(salesToday, salesYesterday);
+        bool salesPositive = _isGrowthPositive(salesToday, salesYesterday);
+
+        String ordersGrowthStr = _calculateGrowth(ordersToday.toDouble(), ordersYesterday.toDouble());
+        bool ordersPositive = _isGrowthPositive(ordersToday.toDouble(), ordersYesterday.toDouble());
+
         double gpToday = salesToday * 0.4;
 
         return StreamBuilder<QuerySnapshot>(
@@ -295,10 +319,29 @@ class _HomeScreenState extends State<HomeScreen> {
               mainAxisSpacing: 15,
               childAspectRatio: 1.4,
               children: [
-                _buildStatCard("ยอดขายวันนี้", "${NumberFormat('#,##0').format(salesToday)} บาท", "Real-time", isPositive: true),
-                _buildStatCard("จำนวนออเดอร์วันนี้", "$ordersToday ออเดอร์", "รายการ", isPositive: true),
-                _buildStatCard("วัตถุดิบใกล้หมด", "$lowStockCount รายการ", "เติมด่วน", isAlert: lowStockCount > 0),
-                _buildStatCard("กำไรขั้นต้น (GP)", "${NumberFormat('#,##0').format(gpToday)} บาท", "~40% Est."),
+                _buildStatCard(
+                  "ยอดขายวันนี้", 
+                  "${NumberFormat('#,##0').format(salesToday)} บาท", 
+                  "$salesGrowthStr เทียบเมื่อวาน", 
+                  isPositive: salesPositive
+                ),
+                _buildStatCard(
+                  "จำนวนออเดอร์วันนี้", 
+                  "$ordersToday ออเดอร์", 
+                  "$ordersGrowthStr เทียบเมื่อวาน", 
+                  isPositive: ordersPositive
+                ),
+                _buildStatCard(
+                  "วัตถุดิบใกล้หมด", 
+                  "$lowStockCount รายการ", 
+                  "เติมด่วน", 
+                  isAlert: lowStockCount > 0
+                ),
+                _buildStatCard(
+                  "กำไรขั้นต้น (GP)", 
+                  "${NumberFormat('#,##0').format(gpToday)} บาท", 
+                  "~40% Est."
+                ),
               ],
             );
           },
@@ -307,7 +350,29 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  String _calculateGrowth(double current, double previous) {
+    if (previous == 0) {
+      return current > 0 ? "+100%" : "0%";
+    }
+    double growth = ((current - previous) / previous) * 100;
+    return "${growth >= 0 ? '+' : ''}${growth.toStringAsFixed(1)}%";
+  }
+
+  bool _isGrowthPositive(double current, double previous) {
+    if (previous == 0) return current >= 0;
+    return current >= previous;
+  }
+
   Widget _buildStatCard(String title, String value, String subtitle, {bool isPositive = false, bool isAlert = false}) {
+    Color subColor = Colors.grey;
+    if (isAlert) {
+      subColor = Colors.red;
+    } else if (title.contains("GP")) {
+      subColor = Colors.blue;
+    } else {
+      subColor = isPositive ? Colors.green : Colors.red;
+    }
+
     return Container(
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
@@ -332,7 +397,7 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 5),
             Text(
               subtitle,
-              style: TextStyle(fontSize: 10, color: isAlert ? Colors.red : (isPositive ? Colors.green : Colors.grey)),
+              style: TextStyle(fontSize: 10, color: subColor, fontWeight: FontWeight.bold),
             ),
           ]
         ],
@@ -350,7 +415,6 @@ class _HomeScreenState extends State<HomeScreen> {
         'page': const ReportScreen(isFullReport: true) 
       },
       {'icon': Icons.coffee, 'label': 'Quick Menu', 'page': const QuickMenuScreen()},
-      // ปุ่มจัดการโปรโมชั่น
       {
         'icon': Icons.local_offer, 
         'label': 'จัดการโปรโมชั่น', 
@@ -362,7 +426,6 @@ class _HomeScreenState extends State<HomeScreen> {
         'label': 'จัดการเมนู', 
         'page': const ManageMenuScreen()
       },
-      // ปุ่มจอคิว
       {
         'icon': Icons.tv, 
         'label': 'จอเรียกคิว (Queue)', 

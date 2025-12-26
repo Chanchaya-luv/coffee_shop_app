@@ -387,7 +387,7 @@ class _GPCalculatorScreenState extends State<GPCalculatorScreen> with SingleTick
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("คำนวณต้นทุน & GP"),
+        title: const Text("คำนวณต้นทุน & GP", style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: const Color(0xFF6F4E37),
         foregroundColor: Colors.white,
         bottom: TabBar(

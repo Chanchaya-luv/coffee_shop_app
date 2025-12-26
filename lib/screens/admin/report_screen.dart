@@ -251,8 +251,10 @@ class _ReportScreenState extends State<ReportScreen> {
       final file = File('${directory.path}/report_email.pdf');
       await file.writeAsBytes(pdfBytes);
 
+      // จำลองการส่ง
       await Future.delayed(const Duration(seconds: 2));
 
+      // ลองเปิดแอปอีเมล (ถ้ามี) หรือ Share Sheet
       try {
         final Email sendEmail = Email(
           body: 'เรียนเจ้าของร้าน,\n\nแนบไฟล์รายงานสรุปยอดขายมาพร้อมกับอีเมลฉบับนี้\n\nขอบคุณครับ',
@@ -264,6 +266,7 @@ class _ReportScreenState extends State<ReportScreen> {
         await FlutterEmailSender.send(sendEmail);
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("เปิดแอปอีเมลสำเร็จ"), backgroundColor: Colors.green));
       } catch (e) {
+         // Fallback: Share Sheet
          await Share.shareXFiles([XFile(file.path)], text: 'รายงานยอดขาย PDF');
          if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("ไม่พบแอปอีเมล -> เปิดเมนูแชร์แทน"), backgroundColor: Colors.orange));
       }
@@ -503,7 +506,15 @@ class _ReportScreenState extends State<ReportScreen> {
                                 children: [
                                   Expanded(child: _buildSummaryCard("เบเกอรี่/เค้ก", "$totalBakery ชิ้น", Icons.cake, Colors.brown)),
                                   const SizedBox(width: 10),
-                                  Expanded(child: _buildSummaryCard("รับสิทธิ์แลกซื้อ", "$totalUpsell สิทธิ์", Icons.thumb_up, Colors.purple)),
+                                  Expanded(child: _buildSummaryCard("รับสิทธิ์แลกซื้อเบเกอรี่", "$totalUpsell สิทธิ์", Icons.thumb_up, Colors.purple)),
+                                ],
+                              ),
+                              
+                              const SizedBox(height: 10),
+                              // --- 🔥 แสดงจำนวนแก้วรวม ---
+                              Row(
+                                children: [
+                                  Expanded(child: _buildSummaryCard("จำนวนแก้วรวม", "$totalCups แก้ว", Icons.local_cafe, Colors.orange)),
                                 ],
                               ),
                               
@@ -546,7 +557,7 @@ class _ReportScreenState extends State<ReportScreen> {
                                       ),
                                       icon: const Icon(Icons.print),
                                       label: const Text("PDF", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-                                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6F4E37), foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), padding: const EdgeInsets.symmetric(vertical: 12)),
+                                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6F4E37), foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
                                     ),
                                   ),
                                   const SizedBox(width: 8),
@@ -585,7 +596,7 @@ class _ReportScreenState extends State<ReportScreen> {
     );
   }
 
-  // --- Helper: กรองวัน/เวลา ---
+  // --- Helper: กรองวัน/เวลา (ใช้ได้กับทั้ง Orders และ Expenses) ---
   List<DocumentSnapshot> _filterDocsByPeriod(List<DocumentSnapshot> allDocs, String timeField) {
     DateTime now = DateTime.now();
     DateTime start;
@@ -627,7 +638,6 @@ class _ReportScreenState extends State<ReportScreen> {
       spots.add(FlSpot(i.toDouble(), data[i] ?? 0));
     }
 
-// กราฟ
     return LineChart(
       LineChartData(
         gridData: FlGridData(show: true, drawVerticalLine: false, horizontalInterval: maxY / 5, getDrawingHorizontalLine: (value) => FlLine(color: Colors.grey.shade200, strokeWidth: 1)),
