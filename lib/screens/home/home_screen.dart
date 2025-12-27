@@ -352,14 +352,23 @@ class _HomeScreenState extends State<HomeScreen> {
 
   String _calculateGrowth(double current, double previous) {
     if (previous == 0) {
+      // ถ้าเมื่อวานไม่มีออเดอร์เลย
+      // ถ้าวันนี้มีออเดอร์ -> ขึ้น +100%
+      // ถ้าวันนี้ไม่มีออเดอร์ -> ขึ้น 0%
       return current > 0 ? "+100%" : "0%";
     }
+    
+    // 🔥 แก้ไข: ถ้าวันนี้เป็น 0 (ยังไม่ขาย) ให้แสดง "0%" แทน "-100%"
+    if (current == 0) return "0%";
+
     double growth = ((current - previous) / previous) * 100;
     return "${growth >= 0 ? '+' : ''}${growth.toStringAsFixed(1)}%";
   }
 
   bool _isGrowthPositive(double current, double previous) {
     if (previous == 0) return current >= 0;
+    // ถ้าวันนี้เป็น 0 ให้ถือว่า Neutral (ไม่แดง) หรือจะแดงก็ได้แล้วแต่ชอบ
+    if (current == 0) return true; // ให้เป็นสีเขียว/เทา (Neutral) แทนสีแดง
     return current >= previous;
   }
 
@@ -370,7 +379,12 @@ class _HomeScreenState extends State<HomeScreen> {
     } else if (title.contains("GP")) {
       subColor = Colors.blue;
     } else {
-      subColor = isPositive ? Colors.green : Colors.red;
+      // ถ้าข้อความเป็น "0%" ให้เป็นสีเทา (Neutral) ไม่ต้องเขียว/แดง
+      if (subtitle.contains("0%")) {
+        subColor = Colors.grey;
+      } else {
+        subColor = isPositive ? Colors.green : Colors.red;
+      }
     }
 
     return Container(

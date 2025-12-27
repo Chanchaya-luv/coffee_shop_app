@@ -1,9 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // Import Auth
 
-class NotificationScreen extends StatelessWidget {
+class NotificationScreen extends StatefulWidget {
   const NotificationScreen({super.key});
+
+  @override
+  State<NotificationScreen> createState() => _NotificationScreenState();
+}
+
+class _NotificationScreenState extends State<NotificationScreen> {
+  // เก็บรายการที่เลือก { id: data }
+  final Map<String, Map<String, dynamic>> _selectedItems = {};
 
   Future<void> _clearNotifications(BuildContext context) async {
     final confirm = await showDialog<bool>(
@@ -27,6 +36,126 @@ class NotificationScreen extends StatelessWidget {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("ล้างการแจ้งเตือนแล้ว")));
       }
     }
+  }
+
+  // --- 🔥 ฟังก์ชันดึงชื่อคนทำรายการ ---
+  Future<String> _getRecorderName() async {
+    User? user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      try {
+        var doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+        if (doc.exists) return doc.data()?['name'] ?? 'พนักงาน';
+      } catch (e) {
+        print("Error: $e");
+      }
+    }
+    return 'Admin';
+  }
+
+  // --- 🔥 ฟังก์ชันเปิด Dialog เติมสต๊อกแบบกลุ่ม ---
+  void _showBulkRestockDialog() {
+    // เตรียม Controllers สำหรับแต่ละรายการ
+    Map<String, TextEditingController> controllers = {};
+    _selectedItems.forEach((id, _) {
+      controllers[id] = TextEditingController();
+    });
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text("เติมสต๊อก (${_selectedItems.length} รายการ)"),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.separated(
+            shrinkWrap: true,
+            itemCount: _selectedItems.length,
+            separatorBuilder: (_,__) => const Divider(),
+            itemBuilder: (ctx, index) {
+              String id = _selectedItems.keys.elementAt(index);
+              var data = _selectedItems[id]!;
+              return Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(data['name'], style: const TextStyle(fontWeight: FontWeight.bold)),
+                        Text("เหลือ: ${data['currentStock']} ${data['unit']}", style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                      ],
+                    )
+                  ),
+                  const SizedBox(width: 10),
+                  SizedBox(
+                    width: 100,
+                    child: TextField(
+                      controller: controllers[id],
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: InputDecoration(
+                        labelText: "เพิ่ม (+)",
+                        suffixText: data['unit'],
+                        isDense: true,
+                        border: const OutlineInputBorder(),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("ยกเลิก")),
+          ElevatedButton.icon(
+            icon: const Icon(Icons.save),
+            label: const Text("บันทึกทั้งหมด"),
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6F4E37), foregroundColor: Colors.white),
+            onPressed: () async {
+              String recorder = await _getRecorderName();
+              WriteBatch batch = FirebaseFirestore.instance.batch();
+              bool hasUpdate = false;
+
+              for (var entry in _selectedItems.entries) {
+                String id = entry.key;
+                var data = entry.value;
+                String valStr = controllers[id]!.text.trim();
+                double addAmount = double.tryParse(valStr) ?? 0;
+
+                if (addAmount != 0) {
+                   hasUpdate = true;
+                   double current = (data['currentStock'] ?? 0).toDouble();
+                   double newStock = current + addAmount;
+                   
+                   // อัปเดตสต๊อก
+                   DocumentReference ref = FirebaseFirestore.instance.collection('ingredients').doc(id);
+                   batch.update(ref, {'currentStock': newStock});
+                   
+                   // บันทึก Log
+                   DocumentReference logRef = FirebaseFirestore.instance.collection('stock_logs').doc();
+                   batch.set(logRef, {
+                      'ingredientName': data['name'],
+                      'changeAmount': addAmount,
+                      'remainingStock': newStock,
+                      'reason': 'เติมสต๊อกด่วน (Bulk)',
+                      'recorder': recorder,
+                      'timestamp': FieldValue.serverTimestamp(),
+                   });
+                }
+              }
+
+              if (hasUpdate) {
+                await batch.commit();
+                if (mounted) {
+                  setState(() { _selectedItems.clear(); });
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("เติมสต๊อกเรียบร้อย!"), backgroundColor: Colors.green));
+                }
+              }
+              if (mounted) Navigator.pop(ctx);
+            },
+          )
+        ],
+      ),
+    );
   }
 
   @override
@@ -66,14 +195,31 @@ class NotificationScreen extends StatelessWidget {
 
                 const SizedBox(height: 10),
 
+                _buildSectionHeader("💸 รายจ่ายล่าสุด (Expenses)", Colors.orange[900]!),
+                _buildExpenseList(lastClearedAt),
+
+                const SizedBox(height: 10),
+
                 _buildSectionHeader("🕒 กิจกรรมล่าสุด (Timeline)", const Color(0xFF5D4037)),
-                // --- 🔥 ใช้ Widget Timeline แบบรวม ---
                 _buildUnifiedTimeline(lastClearedAt), 
+                
+                // เผื่อที่ให้ FAB
+                const SizedBox(height: 80),
               ],
             ),
           );
         }
       ),
+      // --- 🔥 ปุ่ม Floating Action Button สำหรับเติมของที่เลือก ---
+      floatingActionButton: _selectedItems.isNotEmpty 
+        ? FloatingActionButton.extended(
+            onPressed: _showBulkRestockDialog,
+            icon: const Icon(Icons.add_shopping_cart),
+            label: Text("เติมสต๊อก (${_selectedItems.length})"),
+            backgroundColor: const Color(0xFF6F4E37),
+            foregroundColor: Colors.white,
+          )
+        : null,
     );
   }
 
@@ -90,6 +236,7 @@ class NotificationScreen extends StatelessWidget {
     );
   }
 
+  // --- 🔥 ปรับปรุง Low Stock List ให้มี Checkbox ---
   Widget _buildLowStockList() {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance.collection('ingredients').snapshots(),
@@ -126,20 +273,40 @@ class NotificationScreen extends StatelessWidget {
           itemCount: lowStockItems.length,
           itemBuilder: (context, index) {
             var data = lowStockItems[index].data() as Map<String, dynamic>;
+            String id = lowStockItems[index].id;
+            bool isSelected = _selectedItems.containsKey(id);
+
             return Card(
-              color: Colors.red[50],
+              color: isSelected ? Colors.orange[50] : Colors.red[50], // เปลี่ยนสีเมื่อเลือก
               margin: const EdgeInsets.only(bottom: 8),
               elevation: 0,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.red.shade100)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: isSelected ? Colors.orange : Colors.red.shade100)),
               child: ListTile(
-                leading: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-                  child: const Icon(Icons.warning_amber, color: Colors.red, size: 20),
+                leading: Checkbox(
+                  value: isSelected,
+                  activeColor: const Color(0xFF6F4E37),
+                  onChanged: (val) {
+                    setState(() {
+                      if (val == true) {
+                        _selectedItems[id] = data;
+                      } else {
+                        _selectedItems.remove(id);
+                      }
+                    });
+                  },
                 ),
-                title: Text(data['name'] ?? '-', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
-                subtitle: Text("เหลือ: ${data['currentStock']} ${data['unit']} (ต่ำกว่ากำหนด)", style: TextStyle(fontSize: 12, color: Colors.red[800])),
-                trailing: const Text("เติมด่วน", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.red)),
+                title: Text(data['name'] ?? '-', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
+                subtitle: Text("เหลือ: ${data['currentStock']} ${data['unit']}", style: TextStyle(fontSize: 12, color: Colors.red[800])),
+                trailing: const Text("ต้องเติม", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.red)),
+                onTap: () {
+                   setState(() {
+                      if (isSelected) {
+                        _selectedItems.remove(id);
+                      } else {
+                        _selectedItems[id] = data;
+                      }
+                   });
+                },
               ),
             );
           },
@@ -148,9 +315,57 @@ class NotificationScreen extends StatelessWidget {
     );
   }
 
-  // --- 🔥 2. Widget Timeline แบบรวม (Income + Expense) ---
+  Widget _buildExpenseList(Timestamp? lastClearedAt) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance.collection('expenses').orderBy('date', descending: true).limit(20).snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return const Center(child: LinearProgressIndicator(minHeight: 2));
+
+        var docs = snapshot.data!.docs.where((doc) {
+          var data = doc.data() as Map<String, dynamic>;
+          if (data['date'] == null) return false;
+          if (lastClearedAt != null) {
+            Timestamp expenseTime = data['date'];
+            if (expenseTime.compareTo(lastClearedAt) <= 0) return false;
+          }
+          return true;
+        }).toList();
+
+        if (docs.isEmpty) {
+          return const Padding(padding: EdgeInsets.symmetric(horizontal: 20), child: Text("- ไม่มีรายการจ่ายใหม่ -", style: TextStyle(color: Colors.grey)));
+        }
+
+        return ListView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          itemCount: docs.length,
+          itemBuilder: (context, index) {
+            var data = docs[index].data() as Map<String, dynamic>;
+            String title = data['title'] ?? 'รายจ่ายทั่วไป';
+            double amount = (data['amount'] ?? 0).toDouble();
+            Timestamp ts = data['date'];
+            String timeStr = DateFormat('dd/MM HH:mm').format(ts.toDate());
+
+            return Card(
+              elevation: 0,
+              margin: const EdgeInsets.only(bottom: 8),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.orange.withOpacity(0.3))),
+              child: ListTile(
+                dense: true,
+                leading: CircleAvatar(backgroundColor: Colors.orange[50], child: const Icon(Icons.money_off, color: Colors.orange, size: 20)),
+                title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: Text(timeStr, style: const TextStyle(fontSize: 12)),
+                trailing: Text("-฿${NumberFormat('#,##0').format(amount)}", style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 16)),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   Widget _buildUnifiedTimeline(Timestamp? lastClearedAt) {
-    // ใช้ StreamBuilder ซ้อนกันเพื่อดึงข้อมูลจาก 2 Collections
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance.collection('orders').orderBy('timestamp', descending: true).limit(30).snapshots(),
       builder: (context, orderSnapshot) {
@@ -161,24 +376,21 @@ class NotificationScreen extends StatelessWidget {
               return const Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator()));
             }
 
-            // 1. แปลงข้อมูล Order
             List<Map<String, dynamic>> activities = [];
             for (var doc in orderSnapshot.data!.docs) {
               var data = doc.data() as Map<String, dynamic>;
-              data['type'] = 'order'; // ระบุประเภท
-              data['sortTime'] = data['timestamp']; // ใช้ timestamp ในการเรียง
+              data['type'] = 'order'; 
+              data['sortTime'] = data['timestamp']; 
               activities.add(data);
             }
 
-            // 2. แปลงข้อมูล Expense
             for (var doc in expenseSnapshot.data!.docs) {
               var data = doc.data() as Map<String, dynamic>;
               data['type'] = 'expense';
-              data['sortTime'] = data['date']; // ใช้ date ในการเรียง
+              data['sortTime'] = data['date']; 
               activities.add(data);
             }
 
-            // 3. กรองและเรียงลำดับ
             var filteredActivities = activities.where((data) {
               Timestamp? ts = data['sortTime'];
               if (ts == null) return false;
@@ -186,7 +398,6 @@ class NotificationScreen extends StatelessWidget {
               return true;
             }).toList();
 
-            // เรียงใหม่สุดขึ้นก่อน
             filteredActivities.sort((a, b) {
               Timestamp t1 = a['sortTime'];
               Timestamp t2 = b['sortTime'];
@@ -197,7 +408,6 @@ class NotificationScreen extends StatelessWidget {
                return const Center(child: Padding(padding: EdgeInsets.all(20), child: Text("ไม่มีกิจกรรมใหม่", style: TextStyle(color: Colors.grey))));
             }
 
-            // 4. แสดงผล
             return ListView.builder(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
@@ -220,7 +430,6 @@ class NotificationScreen extends StatelessWidget {
     );
   }
 
-  // Widget แสดงรายการ Order (เงินเข้า)
   Widget _buildOrderTile(Map<String, dynamic> data, bool isLast) {
     String orderId = data['orderId'] ?? '-';
     String tableNo = data['tableNumber'] ?? '-';
@@ -245,14 +454,11 @@ class NotificationScreen extends StatelessWidget {
     );
   }
 
-  // Widget แสดงรายการ Expense (เงินออก)
   Widget _buildExpenseTile(Map<String, dynamic> data, bool isLast) {
     String title = data['title'] ?? 'รายจ่ายทั่วไป';
     double amount = (data['amount'] ?? 0).toDouble();
     Timestamp ts = data['date'];
     String timeStr = DateFormat('dd/MM HH:mm').format(ts.toDate());
-    
-    // --- 🔥 แก้ไข: ดึงชื่อคนบันทึกมาแสดง ---
     String recorder = data['recorder'] ?? 'Admin';
 
     return _buildTimelineItem(
@@ -262,12 +468,11 @@ class NotificationScreen extends StatelessWidget {
       title: "รายจ่าย: $title",
       amount: "-฿${NumberFormat('#,##0').format(amount)}",
       amountColor: Colors.red,
-      subtitle: "บันทึกโดย $recorder", // ✅ แสดงชื่อจริง
+      subtitle: "บันทึกโดย $recorder", 
       isLast: isLast,
     );
   }
 
-  // Template สำหรับ Timeline Row
   Widget _buildTimelineItem({
     required IconData icon,
     required Color iconColor,
@@ -279,8 +484,8 @@ class NotificationScreen extends StatelessWidget {
     required bool isLast,
   }) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 0), // ระยะห่างจัดการโดย Column ภายใน
-      child: IntrinsicHeight( // ให้เส้นสูงเท่าเนื้อหา
+      margin: const EdgeInsets.only(bottom: 0), 
+      child: IntrinsicHeight( 
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -288,15 +493,10 @@ class NotificationScreen extends StatelessWidget {
               children: [
                 Container(
                   padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: iconColor.withOpacity(0.1),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: iconColor.withOpacity(0.5)),
-                  ),
+                  decoration: BoxDecoration(color: iconColor.withOpacity(0.1), shape: BoxShape.circle, border: Border.all(color: iconColor.withOpacity(0.5))),
                   child: Icon(icon, size: 18, color: iconColor),
                 ),
-                if (!isLast)
-                  Expanded(child: Container(width: 2, color: Colors.grey[200])),
+                if (!isLast) Expanded(child: Container(width: 2, color: Colors.grey[200])),
               ],
             ),
             const SizedBox(width: 15),
@@ -305,29 +505,13 @@ class NotificationScreen extends StatelessWidget {
                 padding: const EdgeInsets.only(bottom: 15),
                 child: Container(
                   padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 5, offset: const Offset(0, 2))],
-                  ),
+                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 5, offset: const Offset(0, 2))]),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14), overflow: TextOverflow.ellipsis)),
-                          Text(timeStr, style: const TextStyle(fontSize: 10, color: Colors.grey)),
-                        ],
-                      ),
+                      Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14), overflow: TextOverflow.ellipsis)), Text(timeStr, style: const TextStyle(fontSize: 10, color: Colors.grey))]),
                       const SizedBox(height: 4),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(amount, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: amountColor)),
-                          Text(subtitle, style: TextStyle(fontSize: 12, color: Colors.grey[600])),
-                        ],
-                      ),
+                      Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(amount, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: amountColor)), Text(subtitle, style: TextStyle(fontSize: 12, color: Colors.grey[600]))]),
                     ],
                   ),
                 ),

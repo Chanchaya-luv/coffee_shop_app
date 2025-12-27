@@ -21,7 +21,7 @@ class _CustomerTrackingScreenState extends State<CustomerTrackingScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF9F9F9),
       appBar: AppBar(
-        title: const Text("ติดตามสถานะ", style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text("สถานะออเดอร์", style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: const Color(0xFF6F4E37),
         foregroundColor: Colors.white,
         centerTitle: true,
