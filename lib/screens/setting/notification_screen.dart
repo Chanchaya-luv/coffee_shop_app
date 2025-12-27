@@ -332,8 +332,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
         }).toList();
 
         if (docs.isEmpty) {
-          return const Padding(padding: EdgeInsets.symmetric(horizontal: 20), child: Text("- ไม่มีรายการจ่ายใหม่ -", style: TextStyle(color: Colors.grey)));
-        }
+return const Center(child: Padding(padding: EdgeInsets.all(20), child: Text("ไม่มีรายจ่ายใหม่", style: TextStyle(color: Colors.grey))));        }
 
         return ListView.builder(
           shrinkWrap: true,

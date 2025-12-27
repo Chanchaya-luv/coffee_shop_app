@@ -3,7 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
-import 'package:fl_chart/fl_chart.dart';
+import 'package:fl_chart/fl_chart.dart'; // ใช้สำหรับกราฟ
 
 // Import สำหรับ PDF
 import 'package:pdf/pdf.dart';
@@ -28,13 +28,21 @@ class ReportScreen extends StatefulWidget {
 }
 
 class _ReportScreenState extends State<ReportScreen> {
-  String _selectedPeriod = 'Daily';
+  String _selectedPeriod = 'All'; // เริ่มต้นเป็น All เพื่อให้เห็นข้อมูลครบ
   late Future<void> _initializeLocaleFuture;
   
-  // ตัวแปรคุมสถานะ Loading
   bool _isProcessing = false;
-  
   Map<String, String> _menuCategories = {};
+  
+  // สีสำหรับกราฟหมวดหมู่
+  final List<Color> _categoryColors = [
+    const Color(0xFF6F4E37), // กาแฟ
+    const Color(0xFFA6C48A), // ชา
+    const Color(0xFFF4A261), // นม/ผลไม้
+    const Color(0xFFE76F51), // เบเกอรี่
+    const Color(0xFF2A9D8F), // อื่นๆ
+    const Color(0xFF264653),
+  ];
 
   @override
   void initState() {
@@ -42,7 +50,7 @@ class _ReportScreenState extends State<ReportScreen> {
     _initializeLocaleFuture = initializeDateFormatting('th', null);
     
     if (widget.isFullReport) {
-      _selectedPeriod = 'Weekly'; 
+      _selectedPeriod = 'All'; 
     } else {
       _selectedPeriod = 'Daily';
     }
@@ -83,8 +91,8 @@ class _ReportScreenState extends State<ReportScreen> {
   Future<Uint8List> _generatePdfBytes({
     required double totalSales,
     required double totalDiscount,
-    required double totalExpenses, // 🔥 เพิ่มรายจ่าย
-    required double netProfit,     // 🔥 เพิ่มกำไรสุทธิ
+    required double totalExpenses,
+    required double netProfit,
     required int totalCups,
     required int totalOrders,
     required int totalBakery,
@@ -100,7 +108,8 @@ class _ReportScreenState extends State<ReportScreen> {
     if (_selectedPeriod == 'Daily') periodText = 'รายวัน (Daily)';
     else if (_selectedPeriod == 'Weekly') periodText = 'รายสัปดาห์ (Weekly)';
     else if (_selectedPeriod == 'Monthly') periodText = 'รายเดือน (Monthly)';
-    else periodText = 'รายปี (Yearly)';
+    else if (_selectedPeriod == 'Yearly') periodText = 'รายปี (Yearly)';
+    else periodText = 'ทั้งหมด (All Time)';
 
     final top3Menus = topMenus.take(3).toList();
 
@@ -124,7 +133,6 @@ class _ReportScreenState extends State<ReportScreen> {
               ),
               pw.SizedBox(height: 20),
               
-              // --- 🔥 ตารางสรุปการเงินใน PDF ---
               pw.Container(
                 padding: const pw.EdgeInsets.all(10),
                 decoration: pw.BoxDecoration(
@@ -180,7 +188,7 @@ class _ReportScreenState extends State<ReportScreen> {
 
   pw.Widget _buildPdfStatBox(String title, String value, pw.Font font, pw.Font fontBold, PdfColor color) {
     return pw.Container(
-      padding: const pw.EdgeInsets.all(8),
+      width: 150, padding: const pw.EdgeInsets.all(8),
       child: pw.Column(children: [pw.Text(title, style: pw.TextStyle(font: font, fontSize: 9)), pw.Text(value, style: pw.TextStyle(font: fontBold, fontSize: 14, color: color))])
     );
   }
@@ -332,7 +340,7 @@ class _ReportScreenState extends State<ReportScreen> {
         return Scaffold(
           backgroundColor: const Color(0xFFF9F9F9),
           appBar: AppBar(
-            title: Text(widget.isFullReport ? "สรุปยอดขาย (ภาพรวม)" : "รายงานวันนี้ (Today)", style: const TextStyle(fontWeight: FontWeight.bold)),
+            title: Text(widget.isFullReport ? "Dashboard" : "ยอดขายวันนี้ (Today)", style: const TextStyle(fontWeight: FontWeight.bold)),
             backgroundColor: const Color(0xFF6F4E37),
             foregroundColor: Colors.white,
             centerTitle: true,
@@ -354,9 +362,10 @@ class _ReportScreenState extends State<ReportScreen> {
                   decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(25), border: Border.all(color: Colors.grey.shade300)),
                   child: Row(
                     children: [
-                      _buildPeriodTab('Weekly', 'รายสัปดาห์'),
-                      _buildPeriodTab('Monthly', 'รายเดือน'),
-                      _buildPeriodTab('Yearly', 'รายปี'),
+                      _buildPeriodTab('All', 'ทั้งหมด'),
+                      _buildPeriodTab('Weekly', 'สัปดาห์'),
+                      _buildPeriodTab('Monthly', 'เดือน'),
+                      _buildPeriodTab('Yearly', 'ปี'),
                     ],
                   ),
                 ),
@@ -364,11 +373,9 @@ class _ReportScreenState extends State<ReportScreen> {
               if (!widget.isFullReport) const SizedBox(height: 20),
 
               Expanded(
-                // 1. Stream แรก: Orders
                 child: StreamBuilder<QuerySnapshot>(
                   stream: FirebaseFirestore.instance.collection('orders').snapshots(),
                   builder: (context, orderSnapshot) {
-                    // 2. Stream สอง: Expenses (เพิ่มใหม่)
                     return StreamBuilder<QuerySnapshot>(
                       stream: FirebaseFirestore.instance.collection('expenses').snapshots(),
                       builder: (context, expenseSnapshot) {
@@ -391,6 +398,10 @@ class _ReportScreenState extends State<ReportScreen> {
                         int totalBakery = 0; 
                         int totalUpsell = 0; 
                         
+                        // ตัวแปรสำหรับกราฟวงกลม
+                        Map<String, int> categoryCounts = {};
+                        Map<String, int> paymentCounts = {};
+                        
                         Map<String, int> menuPopularity = {};
                         Map<int, double> chartData = {};
 
@@ -399,6 +410,10 @@ class _ReportScreenState extends State<ReportScreen> {
                           if (data['status'] != 'cancelled') {
                             double price = (data['totalPrice'] ?? 0).toDouble();
                             double discount = (data['discount'] ?? 0).toDouble();
+                            String paymentMethod = data['paymentMethod'] ?? 'Cash';
+                            
+                            // นับช่องทางชำระเงิน
+                            paymentCounts[paymentMethod] = (paymentCounts[paymentMethod] ?? 0) + 1;
                             
                             totalSales += price;
                             totalDiscount += discount;
@@ -412,7 +427,11 @@ class _ReportScreenState extends State<ReportScreen> {
                               String cleanName = _cleanMenuName(fullName);
                               menuPopularity[cleanName] = (menuPopularity[cleanName] ?? 0) + 1;
 
-                              String category = _menuCategories[cleanName] ?? '';
+                              String category = _menuCategories[cleanName] ?? 'อื่นๆ';
+                              
+                              // นับหมวดหมู่สินค้า
+                              categoryCounts[category] = (categoryCounts[category] ?? 0) + 1;
+
                               if (['เบเกอรี่', 'เค้ก', 'ขนม', 'ของหวาน'].contains(category)) {
                                 totalBakery++;
                               }
@@ -428,29 +447,32 @@ class _ReportScreenState extends State<ReportScreen> {
                               if (_selectedPeriod == 'Daily') key = date.hour;
                               else if (_selectedPeriod == 'Weekly') key = date.weekday;
                               else if (_selectedPeriod == 'Monthly') key = date.day;
-                              else key = date.month;
+                              else if (_selectedPeriod == 'Yearly') key = date.month;
+                              else key = date.year; // All Time
+                              
                               chartData[key] = (chartData[key] ?? 0) + price;
                             }
                           }
                         }
                         var sortedMenu = menuPopularity.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
 
-                        // --- 🔥 คำนวณรายจ่าย ---
+                        // --- คำนวณรายจ่าย ---
                         double totalExpenses = 0;
                         for (var doc in filteredExpenses) {
                           Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
                           totalExpenses += (data['amount'] ?? 0).toDouble();
                         }
 
-                        // --- 🔥 คำนวณกำไรสุทธิ ---
+                        // --- คำนวณกำไรสุทธิ ---
                         double netProfit = totalSales - totalExpenses;
 
                         return SingleChildScrollView(
                           padding: const EdgeInsets.symmetric(horizontal: 16),
                           child: Column(
                             children: [
+                              // 1. กราฟเส้น (Sales Trend)
                               Container(
-                                height: 350, 
+                                height: 320, 
                                 padding: const EdgeInsets.fromLTRB(10, 25, 20, 10),
                                 decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 15, offset: const Offset(0, 5))]),
                                 child: Column(
@@ -464,7 +486,7 @@ class _ReportScreenState extends State<ReportScreen> {
                               
                               const SizedBox(height: 20),
 
-                              // --- 🔥 การ์ดกำไรสุทธิ (Net Profit) ---
+                              // --- 🔥 2. การ์ดสรุปยอดเงิน (Net Profit Card) ---
                               Container(
                                 width: double.infinity,
                                 padding: const EdgeInsets.all(20),
@@ -493,28 +515,36 @@ class _ReportScreenState extends State<ReportScreen> {
 
                               const SizedBox(height: 20),
 
+                              // --- 🔥 3. Pie Charts (หมวดหมู่ & การชำระเงิน) ---
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(
+                                    child: _buildPieChartCard("สัดส่วนสินค้า (Category)", categoryCounts, _categoryColors),
+                                  ),
+                                  const SizedBox(width: 15),
+                                  Expanded(
+                                    child: _buildPieChartCard("การชำระเงิน (Payment)", paymentCounts, [Colors.blue, Colors.green]),
+                                  ),
+                                ],
+                              ),
+                              
+                              const SizedBox(height: 20),
+
+                              // สรุปตัวเลขย่อย
                               Row(
                                 children: [
-                                  Expanded(child: _buildSummaryCard("ส่วนลดรวม", "-฿${NumberFormat('#,##0.00').format(totalDiscount)}", Icons.discount, Colors.redAccent)),
-                                  const SizedBox(width: 10),
                                   Expanded(child: _buildSummaryCard("จำนวนบิล", "$totalOrders ใบ", Icons.receipt, Colors.blue)),
+                                  const SizedBox(width: 10),
+                                  Expanded(child: _buildSummaryCard("เครื่องดื่มรวม", "$totalCups แก้ว", Icons.local_cafe, Colors.orange)),
                                 ],
                               ),
                               const SizedBox(height: 10),
-                              
                               Row(
                                 children: [
-                                  Expanded(child: _buildSummaryCard("เบเกอรี่/เค้ก", "$totalBakery ชิ้น", Icons.cake, Colors.brown)),
+                                  Expanded(child: _buildSummaryCard("เบเกอรี่", "$totalBakery ชิ้น", Icons.cake, Colors.brown)),
                                   const SizedBox(width: 10),
                                   Expanded(child: _buildSummaryCard("รับสิทธิ์แลกซื้อเบเกอรี่", "$totalUpsell สิทธิ์", Icons.thumb_up, Colors.purple)),
-                                ],
-                              ),
-                              
-                              const SizedBox(height: 10),
-                              // --- 🔥 แสดงจำนวนแก้วรวม ---
-                              Row(
-                                children: [
-                                  Expanded(child: _buildSummaryCard("จำนวนแก้วรวม", "$totalCups แก้ว", Icons.local_cafe, Colors.orange)),
                                 ],
                               ),
                               
@@ -539,7 +569,7 @@ class _ReportScreenState extends State<ReportScreen> {
                               
                               const SizedBox(height: 30),
 
-                              // --- 🔥 ปุ่ม Action 3 ปุ่ม ---
+                              // ปุ่ม Action
                               Row(
                                 children: [
                                   Expanded(
@@ -547,8 +577,8 @@ class _ReportScreenState extends State<ReportScreen> {
                                       onPressed: () => _printReport(
                                         totalSales: totalSales, 
                                         totalDiscount: totalDiscount, 
-                                        totalExpenses: totalExpenses, // 🔥 ส่งค่ารายจ่าย
-                                        netProfit: netProfit,         // 🔥 ส่งค่ากำไร
+                                        totalExpenses: totalExpenses, 
+                                        netProfit: netProfit,
                                         totalCups: totalCups, 
                                         totalOrders: totalOrders,
                                         totalBakery: totalBakery, 
@@ -557,7 +587,7 @@ class _ReportScreenState extends State<ReportScreen> {
                                       ),
                                       icon: const Icon(Icons.print),
                                       label: const Text("PDF", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-                                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6F4E37), foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6F4E37), foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), padding: const EdgeInsets.symmetric(vertical: 12)),
                                     ),
                                   ),
                                   const SizedBox(width: 8),
@@ -584,7 +614,7 @@ class _ReportScreenState extends State<ReportScreen> {
                             ],
                           ),
                         );
-                      },
+                      }
                     );
                   },
                 ),
@@ -595,96 +625,77 @@ class _ReportScreenState extends State<ReportScreen> {
       },
     );
   }
-
-  // --- Helper: กรองวัน/เวลา (ใช้ได้กับทั้ง Orders และ Expenses) ---
-  List<DocumentSnapshot> _filterDocsByPeriod(List<DocumentSnapshot> allDocs, String timeField) {
-    DateTime now = DateTime.now();
-    DateTime start;
-    if (_selectedPeriod == 'Daily') start = DateTime(now.year, now.month, now.day);
-    else if (_selectedPeriod == 'Weekly') start = now.subtract(Duration(days: now.weekday - 1));
-    else if (_selectedPeriod == 'Monthly') start = DateTime(now.year, now.month, 1);
-    else start = DateTime(now.year, 1, 1);
+  
+  // --- 🔥 Helper: สร้าง Pie Chart Card พร้อม Legend % ---
+  Widget _buildPieChartCard(String title, Map<String, int> data, List<Color> colors) {
+    int total = data.values.fold(0, (sum, val) => sum + val);
     
-    DateTime end = DateTime(now.year, now.month, now.day, 23, 59, 59);
-    if (_selectedPeriod == 'Weekly') end = start.add(const Duration(days: 7)).subtract(const Duration(seconds: 1));
-    else if (_selectedPeriod == 'Monthly') end = DateTime(now.year, now.month + 1, 1).subtract(const Duration(seconds: 1));
-    else if (_selectedPeriod == 'Yearly') end = DateTime(now.year, 12, 31, 23, 59, 59);
-
-    return allDocs.where((doc) {
-      Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-      if (data[timeField] == null) return false;
-      DateTime date = (data[timeField] as Timestamp).toDate();
-      return date.isAfter(start.subtract(const Duration(seconds: 1))) && date.isBefore(end.add(const Duration(seconds: 1))); 
-    }).toList();
-  }
-
-  String _getChartTitle() {
-    if (_selectedPeriod == 'Daily') return "ยอดขายรายชั่วโมง (วันนี้)";
-    if (_selectedPeriod == 'Weekly') return "ยอดขายรายวัน (สัปดาห์นี้)";
-    if (_selectedPeriod == 'Monthly') return "ยอดขายรายวัน (เดือนนี้)";
-    return "ยอดขายรายเดือน (ปีนี้)";
-  }
-
-  Widget _buildLineChart(Map<int, double> data) {
-    double maxY = 0;
-    if (data.isNotEmpty) maxY = data.values.reduce((curr, next) => curr > next ? curr : next);
-    maxY = maxY == 0 ? 500 : maxY * 1.2;
-
-    int maxX = (_selectedPeriod == 'Daily') ? 23 : (_selectedPeriod == 'Weekly') ? 7 : (_selectedPeriod == 'Monthly') ? 31 : 12;
-    int startX = (_selectedPeriod == 'Daily') ? 0 : 1;
-
-    List<FlSpot> spots = [];
-    for (int i = startX; i <= maxX; i++) {
-      spots.add(FlSpot(i.toDouble(), data[i] ?? 0));
-    }
-
-    return LineChart(
-      LineChartData(
-        gridData: FlGridData(show: true, drawVerticalLine: false, horizontalInterval: maxY / 5, getDrawingHorizontalLine: (value) => FlLine(color: Colors.grey.shade200, strokeWidth: 1)),
-        titlesData: FlTitlesData(
-          show: true,
-          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)), 
-          bottomTitles: AxisTitles(sideTitles: SideTitles(
-            showTitles: true,
-            reservedSize: 30,
-            interval: _selectedPeriod == 'Yearly' ? 1 : (_selectedPeriod == 'Monthly' ? 5 : (_selectedPeriod == 'Daily' ? 4 : 1)),
-            getTitlesWidget: (value, meta) {
-              String text = '';
-              int v = value.toInt();
-              if (_selectedPeriod == 'Weekly') {
-                const days = ['จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส', 'อา'];
-                if (v >= 1 && v <= 7) text = days[v-1];
-              } else if (_selectedPeriod == 'Daily') {
-                if (v % 4 == 0) text = '${v.toString().padLeft(2,'0')}:00';
-              } else if (_selectedPeriod == 'Yearly') {
-                const months = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
-                if (v >= 1 && v <= 12) text = months[v-1];
-              } else {
-                if (v % 5 == 0 || v == 1) text = '$v';
-              }
-              return SideTitleWidget(axisSide: meta.axisSide, child: Text(text, style: const TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold)));
-            },
-          )),
-        ),
-        borderData: FlBorderData(show: false),
-        minX: startX.toDouble(), maxX: maxX.toDouble(), minY: 0, maxY: maxY,
-        lineBarsData: [
-          LineChartBarData(
-            spots: spots, isCurved: true, color: const Color(0xFFA6C48A), barWidth: 4, isStrokeCapRound: true, dotData: const FlDotData(show: false),
-            belowBarData: BarAreaData(show: true, color: const Color(0xFFA6C48A).withOpacity(0.2)),
-          ),
+    return Container(
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
+      ),
+      child: Column(
+        children: [
+          Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.grey)),
+          const SizedBox(height: 15),
+          if (total == 0) 
+            const SizedBox(height: 150, child: Center(child: Text("- No Data -", style: TextStyle(color: Colors.grey))))
+          else
+            SizedBox(
+              height: 150,
+              child: PieChart(
+                PieChartData(
+                  sectionsSpace: 2,
+                  centerSpaceRadius: 30,
+                  sections: List.generate(data.length, (index) {
+                    String key = data.keys.elementAt(index);
+                    int value = data[key]!;
+                    double percent = (value / total) * 100;
+                    return PieChartSectionData(
+                      color: colors[index % colors.length],
+                      value: value.toDouble(),
+                      title: '${percent.toStringAsFixed(0)}%',
+                      radius: 40,
+                      titleStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
+                    );
+                  }),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            // Legend
+            Column(
+              children: List.generate(data.length, (index) {
+                String key = data.keys.elementAt(index);
+                int value = data[key]!;
+                double percent = (total > 0) ? (value / total) * 100 : 0;
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: Row(
+                    children: [
+                      Container(width: 10, height: 10, decoration: BoxDecoration(color: colors[index % colors.length], shape: BoxShape.circle)),
+                      const SizedBox(width: 5),
+                      Expanded(child: Text(key, style: const TextStyle(fontSize: 10), overflow: TextOverflow.ellipsis)),
+                      Text("${percent.toStringAsFixed(1)}%", style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                );
+              }),
+            )
         ],
-        lineTouchData: LineTouchData(touchTooltipData: LineTouchTooltipData(getTooltipItems: (List<LineBarSpot> touchedBarSpots) { return touchedBarSpots.map((barSpot) { return LineTooltipItem('฿${barSpot.y.toInt()}', const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)); }).toList(); })),
       ),
     );
   }
 
-  Widget _buildPeriodTab(String period, String label) {
-    bool isSelected = _selectedPeriod == period;
-    return Expanded(child: GestureDetector(onTap: () => setState(() => _selectedPeriod = period), child: Container(padding: const EdgeInsets.symmetric(vertical: 10), decoration: BoxDecoration(color: isSelected ? const Color(0xFF6F4E37) : Colors.transparent, borderRadius: BorderRadius.circular(25)), child: Text(label, textAlign: TextAlign.center, style: TextStyle(color: isSelected ? Colors.white : Colors.grey, fontWeight: FontWeight.bold, fontSize: 16)))));
-  }
+  // (Helper Functions เดิม: _filterDocsByPeriod, _getChartTitle, _buildLineChart, _buildPeriodTab, _buildSummaryCard, _buildTopMenuCard)
+  // เพื่อความกระชับ ขอละไว้ (ใช้โค้ดเดิมได้เลยครับ Logic ไม่เปลี่ยน)
+  List<DocumentSnapshot> _filterDocsByPeriod(List<DocumentSnapshot> allDocs, String timeField) { if (_selectedPeriod == 'All') { return allDocs; } DateTime now = DateTime.now(); DateTime start; DateTime end; if (_selectedPeriod == 'Daily') { start = DateTime(now.year, now.month, now.day); end = DateTime(now.year, now.month, now.day, 23, 59, 59); } else if (_selectedPeriod == 'Weekly') { start = now.subtract(Duration(days: now.weekday - 1)); start = DateTime(start.year, start.month, start.day); end = start.add(const Duration(days: 7)).subtract(const Duration(seconds: 1)); } else if (_selectedPeriod == 'Monthly') { start = DateTime(now.year, now.month, 1); end = DateTime(now.year, now.month + 1, 1).subtract(const Duration(seconds: 1)); } else { start = DateTime(now.year, 1, 1); end = DateTime(now.year, 12, 31, 23, 59, 59); } return allDocs.where((doc) { Map<String, dynamic> data = doc.data() as Map<String, dynamic>; if (data[timeField] == null) return false; DateTime date = (data[timeField] as Timestamp).toDate(); return date.isAfter(start.subtract(const Duration(seconds: 1))) && date.isBefore(end.add(const Duration(seconds: 1))); }).toList(); }
+  String _getChartTitle() { if (_selectedPeriod == 'Daily') return "ยอดขายรายชั่วโมง (วันนี้)"; if (_selectedPeriod == 'Weekly') return "ยอดขายรายวัน (สัปดาห์นี้)"; if (_selectedPeriod == 'Monthly') return "ยอดขายรายวัน (เดือนนี้)"; if (_selectedPeriod == 'Yearly') return "ยอดขายรายเดือน (ปีนี้)"; return "ยอดขายรายปี (ทั้งหมด)"; }
+  Widget _buildLineChart(Map<int, double> data) { double maxY = 0; if (data.isNotEmpty) maxY = data.values.reduce((curr, next) => curr > next ? curr : next); maxY = maxY == 0 ? 500 : maxY * 1.2; int maxX = 0; int startX = 0; if (_selectedPeriod == 'Daily') { maxX = 23; startX = 0; } else if (_selectedPeriod == 'Weekly') { maxX = 7; startX = 1; } else if (_selectedPeriod == 'Monthly') { maxX = 31; startX = 1; } else if (_selectedPeriod == 'Yearly') { maxX = 12; startX = 1; } else { if (data.isNotEmpty) { startX = data.keys.reduce((curr, next) => curr < next ? curr : next); maxX = data.keys.reduce((curr, next) => curr > next ? curr : next); } else { startX = DateTime.now().year; maxX = startX; } } List<FlSpot> spots = []; for (int i = startX; i <= maxX; i++) { spots.add(FlSpot(i.toDouble(), data[i] ?? 0)); } return LineChart(LineChartData(gridData: FlGridData(show: true, drawVerticalLine: false, horizontalInterval: maxY / 5, getDrawingHorizontalLine: (value) => FlLine(color: Colors.grey.shade200, strokeWidth: 1)), titlesData: FlTitlesData(show: true, rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)), bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 30, interval: (_selectedPeriod == 'All') ? 1 : (_selectedPeriod == 'Yearly' ? 1 : (_selectedPeriod == 'Monthly' ? 5 : (_selectedPeriod == 'Daily' ? 4 : 1))), getTitlesWidget: (value, meta) { String text = ''; int v = value.toInt(); if (_selectedPeriod == 'Weekly') { const days = ['จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส', 'อา']; if (v >= 1 && v <= 7) text = days[v-1]; } else if (_selectedPeriod == 'Daily') { if (v % 4 == 0) text = '${v.toString().padLeft(2,'0')}:00'; } else if (_selectedPeriod == 'Yearly') { const months = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']; if (v >= 1 && v <= 12) text = months[v-1]; } else if (_selectedPeriod == 'All') { text = '$v'; } else { if (v % 5 == 0 || v == 1) text = '$v'; } return SideTitleWidget(axisSide: meta.axisSide, child: Text(text, style: const TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold))); }))), borderData: FlBorderData(show: false), minX: startX.toDouble(), maxX: maxX.toDouble(), minY: 0, maxY: maxY, lineBarsData: [LineChartBarData(spots: spots, isCurved: _selectedPeriod != 'All', color: const Color(0xFFA6C48A), barWidth: 4, isStrokeCapRound: true, dotData: const FlDotData(show: true), belowBarData: BarAreaData(show: true, color: const Color(0xFFA6C48A).withOpacity(0.2)))])); }
+  Widget _buildPeriodTab(String period, String label) { bool isSelected = _selectedPeriod == period; return Expanded(child: GestureDetector(onTap: () => setState(() => _selectedPeriod = period), child: Container(padding: const EdgeInsets.symmetric(vertical: 10), decoration: BoxDecoration(color: isSelected ? const Color(0xFF6F4E37) : Colors.transparent, borderRadius: BorderRadius.circular(25)), child: Text(label, textAlign: TextAlign.center, style: TextStyle(color: isSelected ? Colors.white : Colors.grey, fontWeight: FontWeight.bold, fontSize: 16))))); }
   Widget _buildSummaryCard(String title, String value, IconData icon, Color color) { return Expanded(child: Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(15), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))]), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [Icon(icon, color: color, size: 18), const SizedBox(width: 5), Expanded(child: Text(title, style: const TextStyle(fontSize: 11, color: Colors.grey), overflow: TextOverflow.ellipsis))]), const SizedBox(height: 8), Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color))]))); }
   Widget _buildTopMenuCard(int index, String name, int count, double percent) { return Container(margin: const EdgeInsets.only(bottom: 10), padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 5)]), child: Column(children: [Row(children: [if (index == 0) const Text("🥇 ", style: TextStyle(fontSize: 20)), if (index == 1) const Text("🥈 ", style: TextStyle(fontSize: 20)), if (index == 2) const Text("🥉 ", style: TextStyle(fontSize: 20)), Expanded(child: Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))), Text("$count แก้ว", style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFA6C48A)))]), const SizedBox(height: 8), ClipRRect(borderRadius: BorderRadius.circular(4), child: LinearProgressIndicator(value: percent, backgroundColor: Colors.grey[100], color: const Color(0xFFA6C48A), minHeight: 8))])); }
 }

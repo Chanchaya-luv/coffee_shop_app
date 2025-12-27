@@ -32,6 +32,7 @@ class _CustomerTrackingScreenState extends State<CustomerTrackingScreen> {
         stream: FirebaseFirestore.instance
             .collection('orders')
             .where('orderId', isEqualTo: widget.orderId)
+            
             .limit(1)
             .snapshots(),
         builder: (context, snapshot) {
@@ -177,7 +178,7 @@ class _CustomerTrackingScreenState extends State<CustomerTrackingScreen> {
                               color: const Color(0xFFF5F5F5),
                               borderRadius: BorderRadius.circular(20),
                             ),
-                            child: Text("Order #$displayId  •  โต๊ะ $tableNo", style: const TextStyle(fontSize: 16, color: Colors.black87, fontWeight: FontWeight.bold)),
+                            child: Text("Order #$displayId  •  โต๊ะ $tableNo", style: const TextStyle(fontSize: 14, color: Colors.black87, fontWeight: FontWeight.bold)),
                           ),
                         ],
                       ),
