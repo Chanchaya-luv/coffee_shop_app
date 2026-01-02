@@ -33,7 +33,7 @@ class OrderService {
       // ถ้าวันเปลี่ยน ให้รีเซ็ตเลขเป็น 1, ถ้าวันเดิม ให้นับต่อ
       int newCount = (lastDate == todayStr) ? currentCount + 1 : 1;
       
-      // --- 🔥 สร้าง Order ID รูปแบบใหม่: YYYYMMDD-XXXX ---
+      // --- สร้าง Order ID รูปแบบใหม่: YYYYMMDD-XXXX ---
       String datePrefix = DateFormat('yyyyMMdd').format(now); // 20251227
       String runningSuffix = newCount.toString().padLeft(4, '0'); // 0001
       String fullOrderId = "$datePrefix-$runningSuffix"; // 20251227-0001
@@ -87,19 +87,32 @@ class OrderService {
         transaction.update(ref, {'currentStock': newStock});
       });
 
-      // 5. สร้างออเดอร์ใหม่ (ใช้ fullOrderId เป็น ID เอกสารเลย เพื่อไม่ให้ทับของเก่า)
+      // 5. สร้างออเดอร์ใหม่
       DocumentReference orderRef = _db.collection('orders').doc(fullOrderId);
       
       List<String> itemNames = [];
       double totalPrice = 0;
 
       for (var cartItem in cartItems) {
-        totalPrice += (cartItem.menu.price * cartItem.quantity);
+        // --- 🔥 คำนวณราคาโดยรวมส่วนต่าง (Price Adjustment) ---
+        double itemPrice = cartItem.menu.price + cartItem.priceAdjustment;
+        totalPrice += (itemPrice * cartItem.quantity);
+
         for (int i = 0; i < cartItem.quantity; i++) {
            String detail = "${cartItem.menu.name}";
+           
+           // --- 🔥 บันทึกประเภท (Type) ต่อท้ายชื่อ ---
+           if (cartItem.type != 'ปกติ') {
+             detail += " (${cartItem.type})";
+           }
+           
            bool showOption = (cartItem.sweetness != '-' && cartItem.sweetness != 'ปกติ (100%)') ||
                              (cartItem.milk != '-' && cartItem.milk != 'นมวัว');
-           if (showOption) { detail += " (${cartItem.sweetness}, ${cartItem.milk})"; }
+           // ใช้ [] เพื่อแยกส่วน Option ให้ดูง่ายขึ้น
+           if (showOption) { 
+             detail += " [${cartItem.sweetness}, ${cartItem.milk}]"; 
+           }
+           
            itemNames.add(detail);
         }
       }
@@ -107,7 +120,7 @@ class OrderService {
       if (netPrice < 0) netPrice = 0;
 
       transaction.set(orderRef, {
-        'orderId': fullOrderId, // บันทึกเลขสวยๆ ลงไป
+        'orderId': fullOrderId,
         'tableNumber': tableNumber, 
         'items': itemNames,         
         'totalPrice': netPrice,     

@@ -5,17 +5,23 @@ class CartItem {
   final MenuItem menu;
   int quantity;
   final String sweetness; 
-  final String milk;      
+  final String milk;
+  
+  // --- 🔥 เพิ่มตัวแปรใหม่ ---
+  final String type;           // ร้อน, เย็น, ปั่น
+  final double priceAdjustment; // -5, +5, +10
 
   CartItem({
     required this.menu,
     this.quantity = 1,
     this.sweetness = 'ปกติ (100%)',
-    this.milk = 'นมวัว',            
+    this.milk = 'นมวัว',
+    this.type = 'เย็น',         // ค่าเริ่มต้น
+    this.priceAdjustment = 5.0, // ค่าเริ่มต้น (เย็น +5)
   });
 
-  // Key สำหรับระบุตัวตนสินค้า (รวม Option)
-  String get key => "${menu.id}_${sweetness}_$milk";
+  // สร้าง Key ให้ไม่ซ้ำกันตามตัวเลือก
+  String get key => "${menu.id}_${sweetness}_${milk}_$type";
 }
 
 class CartProvider with ChangeNotifier {
@@ -33,10 +39,13 @@ class CartProvider with ChangeNotifier {
     return count;
   }
 
+  // --- 🔥 ปรับสูตรคำนวณราคารวม ---
   double get totalAmount {
     var total = 0.0;
     _items.forEach((key, cartItem) {
-      total += cartItem.menu.price * cartItem.quantity;
+      // ราคาต่อแก้ว = ราคาฐาน + ส่วนต่าง
+      double itemPrice = cartItem.menu.price + cartItem.priceAdjustment;
+      total += itemPrice * cartItem.quantity;
     });
     return total;
   }
@@ -46,9 +55,15 @@ class CartProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  // เพิ่มสินค้า (จากหน้าเมนู)
-  void addItem(MenuItem menu, {String sweetness = 'ปกติ (100%)', String milk = 'นมวัว'}) {
-    String itemKey = "${menu.id}_${sweetness}_$milk";
+  // --- 🔥 อัปเดตฟังก์ชัน addItem รับค่า type และ priceAdjustment ---
+  void addItem(MenuItem menu, {
+    String sweetness = 'ปกติ (100%)', 
+    String milk = 'นมวัว',
+    String type = 'เย็น',
+    double priceAdjustment = 5.0,
+  }) {
+    String itemKey = "${menu.id}_${sweetness}_${milk}_$type";
+    
     if (_items.containsKey(itemKey)) {
       _items[itemKey]!.quantity += 1;
     } else {
@@ -57,12 +72,13 @@ class CartProvider with ChangeNotifier {
         quantity: 1,
         sweetness: sweetness,
         milk: milk,
+        type: type,
+        priceAdjustment: priceAdjustment,
       );
     }
     notifyListeners();
   }
 
-  // --- 🔥 ฟังก์ชันใหม่: เพิ่มจำนวน (ปุ่ม + ใน Checkout) ---
   void addQuantity(String itemKey) {
     if (_items.containsKey(itemKey)) {
       _items[itemKey]!.quantity += 1;
@@ -70,19 +86,16 @@ class CartProvider with ChangeNotifier {
     }
   }
 
-  // --- 🔥 ฟังก์ชันใหม่: ลดจำนวน (ปุ่ม - ใน Checkout) ---
   void removeSingleItem(String itemKey) {
     if (!_items.containsKey(itemKey)) return;
-    
     if (_items[itemKey]!.quantity > 1) {
       _items[itemKey]!.quantity -= 1;
     } else {
-      _items.remove(itemKey); // ถ้าเหลือ 1 ให้ลบออก
+      _items.remove(itemKey); 
     }
     notifyListeners();
   }
 
-  // --- 🔥 ฟังก์ชันใหม่: ลบทิ้งทันที (ปุ่มถังขยะ) ---
   void removeItem(String itemKey) {
     if (_items.containsKey(itemKey)) {
       _items.remove(itemKey);
@@ -91,7 +104,6 @@ class CartProvider with ChangeNotifier {
   }
   
   int getQuantity(String menuId) {
-    // ฟังก์ชันนี้ใช้นับรวมทุก Option ของเมนู ID เดียวกัน
     int total = 0;
     _items.forEach((key, item) {
       if (item.menu.id == menuId) {

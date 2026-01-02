@@ -7,6 +7,7 @@ import '../../providers/cart_provider.dart';
 import 'checkout_screen.dart'; 
 import '../../screens/admin/add_menu_screen.dart';
 import '../common/product_customize_dialog.dart';
+import '../common/visual_product_customize_dialog.dart';
 
 class QuickMenuScreen extends StatefulWidget {
   const QuickMenuScreen({super.key});
@@ -44,15 +45,29 @@ class _QuickMenuScreenState extends State<QuickMenuScreen> {
     // ถ้าเป็นเครื่องดื่ม ค่อยโชว์ Popup
     showDialog(
       context: context,
-      builder: (context) => ProductCustomizeDialog(
+      builder: (context) => VisualProductCustomizeDialog(
         menu: menu,
-        onConfirm: (sweetness, milk) {
-          Provider.of<CartProvider>(context, listen: false).addItem(menu, sweetness: sweetness, milk: milk);
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("เพิ่ม ${menu.name} ($sweetness, $milk) แล้ว"), duration: const Duration(milliseconds: 500)));
+        // --- 🔥 รับค่า type และ priceAdjustment ---
+        onConfirm: (sweetness, milk, type, priceAdj) {
+          Provider.of<CartProvider>(context, listen: false).addItem(
+            menu, 
+            sweetness: sweetness, 
+            milk: milk,
+            type: type,
+            priceAdjustment: priceAdj
+          );
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text("เพิ่ม ${menu.name} ($type) แล้ว"), 
+              duration: const Duration(milliseconds: 800)
+            )
+          );
         },
       ),
     );
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -153,6 +168,15 @@ class _QuickMenuScreenState extends State<QuickMenuScreen> {
                     for (var item in data['recipe']) {
                       if (item is Map) recipeList.add(RecipeItem.fromMap(Map<String, dynamic>.from(item)));
                     }
+                    // --- 🔥 Parse availableTypes ---
+                  List<String> types = ['ร้อน', 'เย็น', 'ปั่น']; // ค่า Default สำหรับเมนูเก่า
+                  if (data['availableTypes'] != null && data['availableTypes'] is List) {
+                      // ถ้ามีข้อมูลใน DB ให้ใช้ตามนั้น
+                      types = List<String>.from(data['availableTypes']);
+                  } else if ((data['category'] ?? '') == 'ผลไม้') {
+                      // ถ้าไม่มีข้อมูล แต่เป็นผลไม้ ให้ default เป็นปั่น
+                      types = ['ปั่น'];
+                  }
                   }
 
                   return MenuItem(

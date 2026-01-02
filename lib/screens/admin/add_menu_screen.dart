@@ -18,9 +18,13 @@ class _AddMenuScreenState extends State<AddMenuScreen> {
   late TextEditingController _priceCtrl;
   late TextEditingController _imageUrlCtrl;
   
-  final List<String> _categories = ["กาแฟ", "ชา", "นมสด", "ผลไม้", "เบเกอรี่","อื่นๆ"];
+  final List<String> _categories = ["กาแฟ", "ชา", "นมสด", "ผลไม้", "เบเกอรี่", "อื่นๆ"];
   String _selectedCategory = "กาแฟ";
-  bool _isAvailable = true; // ตัวแปรสถานะ
+  bool _isAvailable = true;
+
+  // --- 🔥 ตัวแปรเก็บประเภทที่เลือก ---
+  final List<String> _allTypes = ['ร้อน', 'เย็น', 'ปั่น'];
+  List<String> _selectedTypes = ['ร้อน', 'เย็น', 'ปั่น']; 
 
   bool _isLoading = false;
 
@@ -35,7 +39,17 @@ class _AddMenuScreenState extends State<AddMenuScreen> {
       String cat = widget.data!['category'] ?? 'กาแฟ';
       if (!_categories.contains(cat)) _categories.add(cat);
       _selectedCategory = cat;
-      _isAvailable = widget.data!['isAvailable'] ?? true; // ดึงค่าเดิม
+      _isAvailable = widget.data!['isAvailable'] ?? true;
+      
+      // --- 🔥 โหลดประเภทที่เลือกไว้ ---
+      if (widget.data!['availableTypes'] != null) {
+        _selectedTypes = List<String>.from(widget.data!['availableTypes']);
+      } else {
+        // ถ้าเป็นข้อมูลเก่า ให้ Default ตามหมวดหมู่
+        if (cat == 'ผลไม้') _selectedTypes = ['ปั่น'];
+        else if (['เบเกอรี่', 'ขนม', 'เค้ก'].contains(cat)) _selectedTypes = [];
+        else _selectedTypes = ['ร้อน', 'เย็น', 'ปั่น'];
+      }
     }
   }
 
@@ -49,6 +63,13 @@ class _AddMenuScreenState extends State<AddMenuScreen> {
 
   Future<void> _saveMenu() async {
     if (!_formKey.currentState!.validate()) return;
+    
+    // ต้องเลือกอย่างน้อย 1 ประเภท (ยกเว้นหมวดเบเกอรี่)
+    if (!['เบเกอรี่', 'ขนม', 'เค้ก', 'ของหวาน'].contains(_selectedCategory) && _selectedTypes.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("กรุณาเลือกประเภทอย่างน้อย 1 อย่าง (ร้อน/เย็น/ปั่น)")));
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     try {
@@ -57,7 +78,8 @@ class _AddMenuScreenState extends State<AddMenuScreen> {
         'price': double.parse(_priceCtrl.text.trim()),
         'category': _selectedCategory,
         'imageUrl': _imageUrlCtrl.text.trim(),
-        'isAvailable': _isAvailable, // บันทึกสถานะ
+        'isAvailable': _isAvailable,
+        'availableTypes': _selectedTypes, // 🔥 บันทึกประเภท
         'updatedAt': FieldValue.serverTimestamp(),
       };
 
@@ -80,10 +102,7 @@ class _AddMenuScreenState extends State<AddMenuScreen> {
     }
   }
 
-  // (ฟังก์ชันลบ _deleteMenu ใช้ตัวเดิม)
   Future<void> _deleteMenu() async {
-      // ... (ก๊อปจากโค้ดเดิมได้เลยครับ Logic การลบเหมือนเดิม)
-      // เพื่อความกระชับ ขอละไว้ในฐานที่เข้าใจ
       final confirm = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(title: const Text("ยืนยันการลบ"), actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("ยกเลิก")), TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("ลบ", style: TextStyle(color: Colors.red)))]));
       if (confirm == true) { await FirebaseFirestore.instance.collection('menu_items').doc(widget.id).delete(); if(mounted) Navigator.pop(context); }
   }
@@ -99,18 +118,52 @@ class _AddMenuScreenState extends State<AddMenuScreen> {
         child: Form(
           key: _formKey,
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               TextFormField(controller: _nameCtrl, decoration: const InputDecoration(labelText: "ชื่อเมนู", border: OutlineInputBorder(), filled: true, fillColor: Colors.white), validator: (val) => val!.isEmpty ? 'กรุณากรอกชื่อ' : null),
               const SizedBox(height: 15),
               TextFormField(controller: _priceCtrl, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: "ราคา", border: OutlineInputBorder(), filled: true, fillColor: Colors.white, suffixText: "บาท"), validator: (val) => val!.isEmpty ? 'กรุณากรอกราคา' : null),
               const SizedBox(height: 15),
-              DropdownButtonFormField(value: _selectedCategory, items: _categories.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(), onChanged: (val) => setState(() => _selectedCategory = val!), decoration: const InputDecoration(labelText: "หมวดหมู่", border: OutlineInputBorder(), filled: true, fillColor: Colors.white)),
+              DropdownButtonFormField(
+                value: _selectedCategory, 
+                items: _categories.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(), 
+                onChanged: (val) => setState(() => _selectedCategory = val!), 
+                decoration: const InputDecoration(labelText: "หมวดหมู่", border: OutlineInputBorder(), filled: true, fillColor: Colors.white)
+              ),
               const SizedBox(height: 15),
+              
+              // --- 🔥 ส่วนเลือกประเภท (Checkboxes) ---
+              if (!['เบเกอรี่', 'ขนม', 'เค้ก', 'ของหวาน'].contains(_selectedCategory)) ...[
+                const Text("ประเภทที่ขายได้ (เลือกได้หลายข้อ)", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 10,
+                  children: _allTypes.map((type) {
+                    bool isSelected = _selectedTypes.contains(type);
+                    return FilterChip(
+                      label: Text(type),
+                      selected: isSelected,
+                      selectedColor: const Color(0xFFA6C48A),
+                      checkmarkColor: Colors.white,
+                      labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.black),
+                      onSelected: (bool selected) {
+                        setState(() {
+                          if (selected) {
+                            _selectedTypes.add(type);
+                          } else {
+                            _selectedTypes.remove(type);
+                          }
+                        });
+                      },
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 15),
+              ],
+
               TextFormField(controller: _imageUrlCtrl, decoration: const InputDecoration(labelText: "ลิงก์รูปภาพ", border: OutlineInputBorder(), filled: true, fillColor: Colors.white, prefixIcon: Icon(Icons.image))),
               
               const SizedBox(height: 20),
-              
-              // --- 🔥 สวิตช์เปิด/ปิด ของหมด ---
               SwitchListTile(
                 title: const Text("สถานะสินค้า"),
                 subtitle: Text(_isAvailable ? "พร้อมขาย (In Stock)" : "ของหมด (Out of Stock)", style: TextStyle(color: _isAvailable ? Colors.green : Colors.red)),

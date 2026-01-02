@@ -70,6 +70,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // Header
             Container(
               height: 100,
               width: double.infinity,
@@ -87,6 +88,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 ],
               ),
             ),
+            
+            // List Items
             Container(
               height: 300, 
               width: double.maxFinite,
@@ -134,7 +137,18 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                             isAvailable: true,
                           );
                           
-                          Provider.of<CartProvider>(context, listen: false).addItem(discountedItem);
+                          // --- 🔥 แก้ไข: เช็คหมวดหมู่เพื่อกำหนดค่าเริ่มต้นให้ถูกต้อง ---
+                          bool isBakery = ['เบเกอรี่', 'ขนม', 'เค้ก', 'ของหวาน', 'ผลไม้'].contains(item.category);
+
+                          Provider.of<CartProvider>(context, listen: false).addItem(
+                            discountedItem,
+                            // ถ้าเป็นเบเกอรี่ ให้เป็นปกติ ไม่บวกเงิน และไม่มีความหวาน/นม
+                            type: isBakery ? 'ปกติ' : 'เย็น', 
+                            priceAdjustment: isBakery ? 0.0 : 5.0, 
+                            sweetness: isBakery ? '-' : 'ปกติ (100%)',
+                            milk: isBakery ? '-' : 'นมวัว',
+                          );
+
                           Navigator.pop(ctx);
                           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("เพิ่มสินค้าโปรโมชั่นแล้ว!"), backgroundColor: Colors.green));
                       },
@@ -238,7 +252,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 5)]),
             child: ListTile(
               leading: const Icon(Icons.table_restaurant, color: Color(0xFFA6C48A)),
-              title: const Text("โต๊ะ / คิว", style: TextStyle(fontSize: 14, color: Colors.grey)),
+              title: const Text("โต๊ะ", style: TextStyle(fontSize: 14, color: Colors.grey)),
               subtitle: Text(_currentTable, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF5D4037))),
               trailing: widget.isCustomer ? null : TextButton(onPressed: () async { final t = await Navigator.push(context, MaterialPageRoute(builder: (_) => const TableMonitorScreen(isSelectionMode: true))); if(t!=null) setState(()=>_currentTable=t); }, child: const Text("เปลี่ยน")),
             ),
@@ -258,54 +272,67 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   separatorBuilder: (_, __) => const Divider(height: 30),
                   itemBuilder: (context, index) {
                     var cartItem = items[index];
+                    bool isPromo = cartItem.menu.id.endsWith('_PROMO'); 
                     
-                    // --- 🔥 เช็คว่าเป็นสินค้าโปรโมชั่นหรือไม่ (รวมถึงของแถม และกล่องสุ่ม) ---
-                    bool isPromo = cartItem.menu.id.endsWith('_PROMO') || 
-                                   cartItem.menu.id.endsWith('_FREE') || 
-                                   cartItem.menu.id.contains('GACHA'); // กล่องสุ่ม
+                    bool hasOptions = (cartItem.sweetness != '-' && cartItem.sweetness != 'ปกติ (100%)') ||
+                                      (cartItem.milk != '-' && cartItem.milk != 'นมวัว');
 
                     return Row(
-                      children: [
-                        // ปุ่มถังขยะ
+  crossAxisAlignment: CrossAxisAlignment.start,
+  children: [
+
+                      
                         IconButton(icon: const Icon(Icons.delete_outline, color: Colors.brown), onPressed: () => cart.removeItem(cartItem.key)),
-                        
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(cartItem.menu.name, style: const TextStyle(fontSize: 16, color: Color(0xFF5D4037), fontWeight: FontWeight.bold)),
-                              if (cartItem.sweetness != 'ปกติ (100%)' || cartItem.milk != 'นมวัว')
+                              // --- แสดงชื่อและประเภท ---
+                              Row(
+                                children: [
+                                  Text(
+  cartItem.menu.name,
+  maxLines: 1,
+  overflow: TextOverflow.ellipsis,
+  style: const TextStyle(
+    fontSize: 16,
+    color: Color(0xFF5D4037),
+    fontWeight: FontWeight.bold,
+  ),
+),
+
+                                  const SizedBox(width: 5),
+                                  if (cartItem.type != 'ปกติ')
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(color: Colors.brown[50], borderRadius: BorderRadius.circular(4)),
+                                      child: Text(cartItem.type, style: const TextStyle(fontSize: 10, color: Colors.brown, fontWeight: FontWeight.bold)),
+                                    )
+                                ],
+                              ),
+                              if (hasOptions)
                                 Text("หวาน: ${cartItem.sweetness}, ${cartItem.milk}", style: const TextStyle(fontSize: 12, color: Colors.grey)),
                             ],
                           )
                         ),
-                        
                         Container(
                           decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(8)),
                           child: Row(
                             children: [
                               InkWell(onTap: () => cart.removeSingleItem(cartItem.key), child: const Padding(padding: EdgeInsets.symmetric(horizontal: 8), child: Text("-", style: TextStyle(fontSize: 20)))),
                               Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(border: Border.symmetric(vertical: BorderSide(color: Colors.grey.shade300))), child: Text("${cartItem.quantity}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))),
-                              
-                              // --- 🔥 ปุ่มบวก: ถ้าเป็น Promo/Free/Gacha ห้ามกด และแสดงแจ้งเตือน ---
                               InkWell(
                                 onTap: isPromo 
-                                    ? () {
-                                        ScaffoldMessenger.of(context).hideCurrentSnackBar(); 
-                                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("สินค้าโปรโมชั่น/กิจกรรม จำกัด 1 ชิ้นต่อออเดอร์"), duration: Duration(seconds: 2)));
-                                      } 
-                                    : () => cart.addQuantity(cartItem.key),
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8), 
-                                  // เปลี่ยนสีเป็นสีเทาถ้ากดไม่ได้
-                                  child: Text("+", style: TextStyle(fontSize: 20, color: isPromo ? Colors.grey : Colors.green))
-                                )
+                                  ? () { ScaffoldMessenger.of(context).hideCurrentSnackBar(); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("สินค้าโปรโมชั่นจำกัด 1 ชิ้นต่อออเดอร์ หากต้องการเพิ่มกรุณาสั่งแบบราคาปกติ"), duration: Duration(seconds: 2))); } 
+                                  : () => cart.addQuantity(cartItem.key),
+                                child: Padding(padding: const EdgeInsets.symmetric(horizontal: 8), child: Text("+", style: TextStyle(fontSize: 20, color: isPromo ? Colors.grey : Colors.green)))
                               ),
                             ],
                           ),
                         ),
                         const SizedBox(width: 15),
-                        Text("฿${(cartItem.menu.price * cartItem.quantity).toStringAsFixed(0)}", style: const TextStyle(fontWeight: FontWeight.bold)),
+                        // ราคารวม (คำนวณจากสูตรใหม่ใน Provider)
+                        Text("฿${( (cartItem.menu.price + cartItem.priceAdjustment) * cartItem.quantity).toStringAsFixed(0)}", style: const TextStyle(fontWeight: FontWeight.bold)),
                       ],
                     );
                   },

@@ -6,12 +6,12 @@ import '../../models/model_menu.dart';
 import '../../providers/cart_provider.dart';
 import 'checkout_screen.dart';
 import 'customer_tracking_screen.dart';
-import '../common/product_customize_dialog.dart';
-// --- 🔥 Import หน้า Mood ---
-import 'mood_recommendation_screen.dart';
-// --- 🔥 เพิ่ม Import หน้ากล่องสุ่ม ---
-import 'mystery_box_screen.dart';
+
+// --- 🔥 Import Visual Dialog (แบบใหม่) ---
 import '../common/visual_product_customize_dialog.dart';
+// --- 🔥 Import ฟีเจอร์พิเศษ ---
+import 'mood_recommendation_screen.dart';
+import 'mystery_box_screen.dart';
 
 class MenuScreen extends StatefulWidget {
   final String tableNumber; 
@@ -23,17 +23,19 @@ class MenuScreen extends StatefulWidget {
 }
 
 class _MenuScreenState extends State<MenuScreen> {
-  final List<String> _categories = ["กาแฟ", "ชา", "นมสด","เบเกอรี่"];
+  final List<String> _categories = ["กาแฟ", "ชา", "นมสด", "ผลไม้", "เบเกอรี่"];
   String _selectedCategory = "ทั้งหมด"; 
 
   // --- 🔥 ฟังก์ชันเปิดหน้าต่างเลือกตัวเลือก ---
   void _openCustomizeDialog(MenuItem menu) {
-    // 1. เช็คหมวดหมู่ที่ไม่ต้องเลือก Option
+    // 1. เช็คหมวดหมู่ที่ไม่ต้องเลือก Option (เช่น เบเกอรี่, ขนม)
     if (['เบเกอรี่', 'ขนม', 'เค้ก', 'ของหวาน'].contains(menu.category)) {
       Provider.of<CartProvider>(context, listen: false).addItem(
         menu, 
         sweetness: '-', 
-        milk: '-'
+        milk: '-',
+        type: 'ปกติ',         // ของกินเล่น
+        priceAdjustment: 0.0  // ไม่บวกเพิ่ม
       );
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -44,16 +46,23 @@ class _MenuScreenState extends State<MenuScreen> {
       return; 
     }
 
-    // 2. ถ้าเป็นหมวดอื่นๆ ให้เปิด Dialog
+    // 2. ถ้าเป็นหมวดอื่นๆ (กาแฟ, ชา, ผลไม้) ให้เปิด Visual Dialog
     showDialog(
       context: context,
       builder: (context) => VisualProductCustomizeDialog(
         menu: menu,
-        onConfirm: (sweetness, milk) {
-          Provider.of<CartProvider>(context, listen: false).addItem(menu, sweetness: sweetness, milk: milk);
+        onConfirm: (sweetness, milk, type, priceAdj) {
+          Provider.of<CartProvider>(context, listen: false).addItem(
+            menu, 
+            sweetness: sweetness, 
+            milk: milk,
+            type: type,
+            priceAdjustment: priceAdj
+          );
+          
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text("เพิ่ม ${menu.name} ($sweetness, $milk) แล้ว"), 
+              content: Text("เพิ่ม ${menu.name} ($type) แล้ว"), 
               duration: const Duration(milliseconds: 800)
             )
           );
@@ -171,7 +180,7 @@ class _MenuScreenState extends State<MenuScreen> {
                 ),
               ),
 
-              // --- 🔥 2. ปุ่มพิเศษ: Mood & Mystery Box (วางคู่กัน) ---
+              // --- 🔥 ปุ่มพิเศษ: Mood & Mystery Box (วางคู่กัน) ---
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 child: Row(
@@ -254,7 +263,7 @@ class _MenuScreenState extends State<MenuScreen> {
                           category: data['category'] ?? 'อื่นๆ',
                           imageUrl: data['imageUrl'] ?? '',
                           recipe: recipeList,
-                          isAvailable: data['isAvailable'] ?? true,
+                          isAvailable: data['isAvailable'] ?? true, 
                         );
 
                         return _buildMenuCard(context, menu);
@@ -334,7 +343,7 @@ class _MenuScreenState extends State<MenuScreen> {
               
               if (menu.isAvailable)
                 InkWell(
-                  onTap: () => _openCustomizeDialog(menu),
+                  onTap: () => _openCustomizeDialog(menu), 
                   child: Container(padding: const EdgeInsets.all(6), decoration: const BoxDecoration(color: Color(0xFFA6C48A), shape: BoxShape.circle), child: const Icon(Icons.add, color: Colors.white, size: 20))
                 )
               else
@@ -346,3 +355,5 @@ class _MenuScreenState extends State<MenuScreen> {
     );
   }
 }
+
+

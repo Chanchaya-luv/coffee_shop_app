@@ -33,6 +33,7 @@ class MenuItem {
   final String imageUrl;
   final List<RecipeItem> recipe;
   final bool isAvailable; // --- 🔥 เพิ่มตัวแปรเช็คของหมด ---
+  final List<String> availableTypes; 
 
   MenuItem({
     required this.id, 
@@ -42,5 +43,6 @@ class MenuItem {
     this.imageUrl = '',
     required this.recipe,
     this.isAvailable = true, // ค่า Default คือมีของ (True)
+    this.availableTypes = const ['ร้อน', 'เย็น', 'ปั่น'], 
   });
 }

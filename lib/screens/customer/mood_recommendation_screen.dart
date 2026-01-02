@@ -81,17 +81,31 @@ class _MoodRecommendationScreenState extends State<MoodRecommendationScreen> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("เพิ่ม ${menu.name} แล้ว"), duration: const Duration(milliseconds: 500)));
     } else {
       showDialog(
-        context: context,
-        builder: (context) => VisualProductCustomizeDialog(
-          menu: menu,
-          onConfirm: (sweetness, milk) {
-            Provider.of<CartProvider>(context, listen: false).addItem(menu, sweetness: sweetness, milk: milk);
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("เพิ่ม ${menu.name} แล้ว"), duration: const Duration(milliseconds: 500)));
-          },
+  context: context,
+  builder: (context) => VisualProductCustomizeDialog(
+    menu: menu,
+    onConfirm: (sweetness, milk, type, priceAdj) {
+      Provider.of<CartProvider>(context, listen: false).addItem(
+        menu,
+        sweetness: sweetness,
+        milk: milk,
+        type: type,
+        priceAdjustment: priceAdj,
+      );
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("เพิ่ม ${menu.name} ($type) แล้ว"),
+          duration: const Duration(milliseconds: 500),
         ),
+      );
+    },
+  ),
       );
     }
   }
+
+
 
   @override
   Widget build(BuildContext context) {
