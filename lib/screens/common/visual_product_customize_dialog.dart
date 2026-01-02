@@ -100,10 +100,10 @@ class _VisualProductCustomizeDialogState extends State<VisualProductCustomizeDia
     }
 
     if (type == 'ร้อน') _priceAdj = -5.0;
-    else if (type == 'ปั่น') _priceAdj = 10.0;
+    else if (type == 'ปั่น') _priceAdj = 5.0;
     else _priceAdj = 0.0; 
     
-    if (type == 'เย็น') _priceAdj = 5.0; 
+    if (type == 'เย็น') _priceAdj = 0; 
   }
 
   @override
@@ -253,11 +253,11 @@ class _VisualProductCustomizeDialogState extends State<VisualProductCustomizeDia
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: [
-                        if (_availableTypes.contains('ร้อน')) _buildTypeChip("ร้อน (-5฿)", "ร้อน"),
-                        if (_availableTypes.contains('เย็น')) _buildTypeChip("เย็น (+5฿)", "เย็น"),
+                        if (_availableTypes.contains('ร้อน')) _buildTypeChip("ร้อน", "ร้อน"),
+                        if (_availableTypes.contains('เย็น')) _buildTypeChip("เย็น", "เย็น"),
                         if (_availableTypes.contains('ปั่น')) 
                           // 🔥 ถ้าเป็นผลไม้ ปั่นไม่บวกเพิ่ม
-                          _buildTypeChip(widget.menu.category == 'ผลไม้' ? "ปั่น" : "ปั่น (+10฿)", "ปั่น"),
+                          _buildTypeChip(widget.menu.category == 'ผลไม้' ? "ปั่น" : "ปั่น", "ปั่น"),
                       ],
                     ),
                     const SizedBox(height: 15),
@@ -286,7 +286,7 @@ class _VisualProductCustomizeDialogState extends State<VisualProductCustomizeDia
                     const SizedBox(height: 15),
                     const Text("ประเภทนม (Milk)", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
                     const SizedBox(height: 10),
-                    SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: ['นมวัว', 'นมโอ๊ต (+10)', 'นมถั่วเหลือง'].map((val) => Padding(padding: const EdgeInsets.only(right: 8.0), child: ChoiceChip(label: Text(val), selected: _milk == val, selectedColor: const Color(0xFF6F4E37), labelStyle: TextStyle(color: _milk == val ? Colors.white : Colors.black), onSelected: (sel) => setState(() => _milk = val)))).toList())),
+                    SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: ['นมวัว', 'นมโอ๊ต', 'นมถั่วเหลือง','ไม่ใส่นม'].map((val) => Padding(padding: const EdgeInsets.only(right: 8.0), child: ChoiceChip(label: Text(val), selected: _milk == val, selectedColor: const Color(0xFF6F4E37), labelStyle: TextStyle(color: _milk == val ? Colors.white : Colors.black), onSelected: (sel) => setState(() => _milk = val)))).toList())),
                     
                     const Spacer(),
                     SizedBox(width: double.infinity, height: 50, child: ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFA6C48A), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))), onPressed: () { widget.onConfirm(_sweetness, _milk, _type, _priceAdj); Navigator.pop(context); }, child: Text("เพิ่ม ฿${finalPrice.toStringAsFixed(0)}", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white))))

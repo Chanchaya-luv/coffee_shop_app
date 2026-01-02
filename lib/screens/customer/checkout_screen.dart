@@ -242,7 +242,16 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
     return Scaffold(
       backgroundColor: const Color(0xFFF9F9F9),
-      appBar: AppBar(title: const Text("Checkout"), backgroundColor: const Color(0xFF6F4E37), foregroundColor: Colors.white),
+appBar: AppBar(
+  title: const Text(
+    "Checkout",
+    style: TextStyle(
+      fontWeight: FontWeight.bold,
+    ),
+  ),
+  backgroundColor: const Color(0xFF6F4E37),
+  foregroundColor: Colors.white,
+),
       body: Column(
         children: [
           const SizedBox(height: 20),
@@ -289,17 +298,20 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                             children: [
                               // --- แสดงชื่อและประเภท ---
                               Row(
+                                mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Text(
-  cartItem.menu.name,
-  maxLines: 1,
-  overflow: TextOverflow.ellipsis,
-  style: const TextStyle(
-    fontSize: 16,
-    color: Color(0xFF5D4037),
-    fontWeight: FontWeight.bold,
-  ),
-),
+                                  Flexible(
+  child: Text(
+        cartItem.menu.name,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(
+          fontSize: 16,
+          color: Color(0xFF5D4037),
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    ),
 
                                   const SizedBox(width: 5),
                                   if (cartItem.type != 'ปกติ')
