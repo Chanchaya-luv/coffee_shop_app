@@ -15,14 +15,14 @@ class OrderService {
   ) async {
     return await _db.runTransaction((transaction) async {
       
-      // 1. อ่านตัวนับออเดอร์ (Counter)
+      // 1. อ่านตัวนับออเดอร์
       DocumentReference counterRef = _db.collection('metadata').doc('order_counter');
       DocumentSnapshot counterSnapshot = await transaction.get(counterRef);
 
       int currentCount = 0;
       String lastDate = '';
       DateTime now = DateTime.now();
-      String todayStr = DateFormat('yyyy-MM-dd').format(now); // ใช้สำหรับเช็ควันตัดรอบ
+      String todayStr = DateFormat('yyyy-MM-dd').format(now);
 
       if (counterSnapshot.exists && counterSnapshot.data() != null) {
         var data = counterSnapshot.data() as Map<String, dynamic>;
@@ -30,13 +30,11 @@ class OrderService {
         lastDate = data['date'] ?? '';
       }
 
-      // ถ้าวันเปลี่ยน ให้รีเซ็ตเลขเป็น 1, ถ้าวันเดิม ให้นับต่อ
       int newCount = (lastDate == todayStr) ? currentCount + 1 : 1;
       
-      // --- สร้าง Order ID รูปแบบใหม่: YYYYMMDD-XXXX ---
-      String datePrefix = DateFormat('yyyyMMdd').format(now); // 20251227
-      String runningSuffix = newCount.toString().padLeft(4, '0'); // 0001
-      String fullOrderId = "$datePrefix-$runningSuffix"; // 20251227-0001
+      String datePrefix = DateFormat('yyyyMMdd').format(now); 
+      String runningSuffix = newCount.toString().padLeft(4, '0');
+      String fullOrderId = "$datePrefix-$runningSuffix"; 
 
       // 2. อ่านและเตรียมตัดสต๊อก
       Map<String, DocumentSnapshot> ingredientSnapshots = {};
@@ -73,7 +71,7 @@ class OrderService {
         }
       }
       
-      // --- WRITES (เขียนลง DB) ---
+      // --- WRITES ---
 
       // 3. อัปเดตตัวนับ
       transaction.set(counterRef, {
@@ -94,21 +92,18 @@ class OrderService {
       double totalPrice = 0;
 
       for (var cartItem in cartItems) {
-        // --- 🔥 คำนวณราคาโดยรวมส่วนต่าง (Price Adjustment) ---
         double itemPrice = cartItem.menu.price + cartItem.priceAdjustment;
         totalPrice += (itemPrice * cartItem.quantity);
 
         for (int i = 0; i < cartItem.quantity; i++) {
            String detail = "${cartItem.menu.name}";
            
-           // --- 🔥 บันทึกประเภท (Type) ต่อท้ายชื่อ ---
            if (cartItem.type != 'ปกติ') {
              detail += " (${cartItem.type})";
            }
            
            bool showOption = (cartItem.sweetness != '-' && cartItem.sweetness != 'ปกติ (100%)') ||
                              (cartItem.milk != '-' && cartItem.milk != 'นมวัว');
-           // ใช้ [] เพื่อแยกส่วน Option ให้ดูง่ายขึ้น
            if (showOption) { 
              detail += " [${cartItem.sweetness}, ${cartItem.milk}]"; 
            }
@@ -134,7 +129,6 @@ class OrderService {
         'timestamp': FieldValue.serverTimestamp(), 
       });
 
-      // 6. อัปเดตสถานะโต๊ะ
       if (int.tryParse(tableNumber) != null) {
         DocumentReference tableRef = _db.collection('tables').doc(tableNumber);
         transaction.set(tableRef, {'id': tableNumber, 'status': 'occupied'}, SetOptions(merge: true));
@@ -142,10 +136,38 @@ class OrderService {
 
       return fullOrderId; 
     }).then((orderId) {
-      // บันทึก Log แยก
+      // บันทึก Log และ ยอดขายเมนู
       _logOrderUsage(cartItems, orderId, recorderName);
+      _updateMenuSalesCount(cartItems); // 🔥 เพิ่มฟังก์ชันนี้
       return orderId;
     });
+  }
+
+  // --- 🔥 ฟังก์ชันอัปเดตยอดขายเมนู (Best Seller) ---
+  Future<void> _updateMenuSalesCount(List<CartItem> cartItems) async {
+    final batch = _db.batch();
+    
+    // รวมจำนวนสินค้าชนิดเดียวกันในออเดอร์เดียว
+    Map<String, int> menuCounts = {};
+    for (var item in cartItems) {
+      // ถ้าเป็นสินค้าพิเศษ (Promo/Free/Gacha) อาจจะไม่นับรวม หรือจะนับก็ได้
+      // ในที่นี้ให้นับเฉพาะสินค้าปกติ หรือ ID หลัก
+      String menuId = item.menu.id.split('_')[0]; // ตัด _PROMO ออกเพื่อนับรวม
+      menuCounts[menuId] = (menuCounts[menuId] ?? 0) + item.quantity;
+    }
+
+    menuCounts.forEach((menuId, quantity) {
+      DocumentReference menuRef = _db.collection('menu_items').doc(menuId);
+      // ใช้ FieldValue.increment เพื่อบวกจำนวนเข้าไป
+      batch.update(menuRef, {'orderCount': FieldValue.increment(quantity)});
+    });
+
+    try {
+      await batch.commit();
+    } catch (e) {
+      print("Error updating menu stats: $e");
+      // ไม่ต้อง throw error เพราะไม่ใช่งานหลัก
+    }
   }
 
   Future<void> _logOrderUsage(List<CartItem> cartItems, String orderId, String? recorderName) async {
@@ -194,4 +216,6 @@ class OrderService {
     }
     await batch.commit();
   }
+
+  
 }

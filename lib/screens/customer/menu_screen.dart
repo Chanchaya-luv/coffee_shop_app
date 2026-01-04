@@ -6,10 +6,7 @@ import '../../models/model_menu.dart';
 import '../../providers/cart_provider.dart';
 import 'checkout_screen.dart';
 import 'customer_tracking_screen.dart';
-
-// --- 🔥 Import Visual Dialog (แบบใหม่) ---
 import '../common/visual_product_customize_dialog.dart';
-// --- 🔥 Import ฟีเจอร์พิเศษ ---
 import 'mood_recommendation_screen.dart';
 import 'mystery_box_screen.dart';
 
@@ -23,19 +20,17 @@ class MenuScreen extends StatefulWidget {
 }
 
 class _MenuScreenState extends State<MenuScreen> {
-  final List<String> _categories = ["กาแฟ", "ชา", "นมสด", "ผลไม้", "เบเกอรี่"];
-  String _selectedCategory = "ทั้งหมด"; 
+  // เปลี่ยน Default เป็น "ยอดนิยม 🔥"
+  String _selectedCategory = "ยอดนิยม 🔥"; 
 
-  // --- 🔥 ฟังก์ชันเปิดหน้าต่างเลือกตัวเลือก ---
   void _openCustomizeDialog(MenuItem menu) {
-    // 1. เช็คหมวดหมู่ที่ไม่ต้องเลือก Option (เช่น เบเกอรี่, ขนม)
     if (['เบเกอรี่', 'ขนม', 'เค้ก', 'ของหวาน'].contains(menu.category)) {
       Provider.of<CartProvider>(context, listen: false).addItem(
         menu, 
         sweetness: '-', 
         milk: '-',
-        type: 'ปกติ',         // ของกินเล่น
-        priceAdjustment: 0.0  // ไม่บวกเพิ่ม
+        type: 'ปกติ',         
+        priceAdjustment: 0.0  
       );
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -46,7 +41,6 @@ class _MenuScreenState extends State<MenuScreen> {
       return; 
     }
 
-    // 2. ถ้าเป็นหมวดอื่นๆ (กาแฟ, ชา, ผลไม้) ให้เปิด Visual Dialog
     showDialog(
       context: context,
       builder: (context) => VisualProductCustomizeDialog(
@@ -118,8 +112,7 @@ class _MenuScreenState extends State<MenuScreen> {
 
           var docs = snapshot.data!.docs;
 
-          // สกัดหมวดหมู่
-          Set<String> categorySet = {"ทั้งหมด"};
+          Set<String> categorySet = {"ยอดนิยม 🔥"}; 
           for (var doc in docs) {
             var data = doc.data() as Map<String, dynamic>;
             if (data['category'] != null && data['category'].toString().isNotEmpty) {
@@ -128,18 +121,63 @@ class _MenuScreenState extends State<MenuScreen> {
           }
           List<String> dynamicCategories = categorySet.toList();
           dynamicCategories.sort((a, b) {
-             if (a == "ทั้งหมด") return -1;
-             if (b == "ทั้งหมด") return 1;
+             if (a == "ยอดนิยม 🔥") return -1;
+             if (b == "ยอดนิยม 🔥") return 1;
              return a.compareTo(b);
           });
 
-          // กรองสินค้า
-          var filteredDocs = docs;
-          if (_selectedCategory != "ทั้งหมด") {
-            filteredDocs = docs.where((doc) {
-               var data = doc.data() as Map<String, dynamic>;
-               return (data['category'] ?? 'อื่นๆ') == _selectedCategory;
-            }).toList();
+          List<MenuItem> displayMenus = [];
+
+          List<MenuItem> allMenus = docs.map((doc) {
+              Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+              List<RecipeItem> recipeList = [];
+              if (data['recipe'] != null && data['recipe'] is List) {
+                for (var item in data['recipe']) {
+                  if (item is Map) {
+                    recipeList.add(RecipeItem.fromMap(Map<String, dynamic>.from(item)));
+                  }
+                }
+              }
+              
+              List<String> types = ['ร้อน', 'เย็น', 'ปั่น'];
+              if (data['availableTypes'] != null) {
+                types = List<String>.from(data['availableTypes']);
+              } else if (data['category'] == 'ผลไม้') {
+                types = ['ปั่น'];
+              }
+
+              // --- 🔥 ดึงข้อมูล Available Milks ---
+              List<String> milks = ['นมวัว', 'นมโอ๊ต', 'นมถั่วเหลือง'];
+              if (data['availableMilks'] != null) {
+                milks = List<String>.from(data['availableMilks']);
+              } else if (['กาแฟ', 'ชา', 'นมสด'].contains(data['category'])) {
+                milks = ['นมวัว', 'นมโอ๊ต', 'นมถั่วเหลือง'];
+              } else {
+                milks = ['ไม่ใส่นม']; // Default
+              }
+
+              return MenuItem(
+                id: doc.id,
+                name: data['name'] ?? 'ไม่ระบุชื่อ',
+                price: (data['price'] ?? 0).toDouble(),
+                category: data['category'] ?? 'อื่นๆ',
+                imageUrl: data['imageUrl'] ?? '',
+                recipe: recipeList,
+                isAvailable: data['isAvailable'] ?? true,
+                availableTypes: types,
+                availableMilks: milks, // ✅ ใส่ข้อมูลนม
+              );
+          }).toList();
+
+          if (_selectedCategory == "ยอดนิยม 🔥") {
+             allMenus.sort((a, b) {
+                int countA = (docs.firstWhere((d) => d.id == a.id).data() as Map)['orderCount'] ?? 0;
+                int countB = (docs.firstWhere((d) => d.id == b.id).data() as Map)['orderCount'] ?? 0;
+                return countB.compareTo(countA);
+             });
+             displayMenus = allMenus.take(6).toList();
+          } else {
+             displayMenus = allMenus.where((m) => m.category == _selectedCategory).toList();
           }
 
           return Column(
@@ -180,48 +218,31 @@ class _MenuScreenState extends State<MenuScreen> {
                 ),
               ),
 
-              // --- 🔥 ปุ่มพิเศษ: Mood & Mystery Box (วางคู่กัน) ---
+              // ปุ่มพิเศษ
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 child: Row(
                   children: [
-                    // ปุ่ม Mood (ช่วยเลือกเมนู)
                     Expanded(
                       flex: 6,
                       child: SizedBox(
                         height: 50,
                         child: ElevatedButton.icon(
-                          onPressed: () {
-                            Navigator.push(context, MaterialPageRoute(builder: (context) => const MoodRecommendationScreen()));
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.white,
-                            foregroundColor: const Color(0xFF6F4E37),
-                            elevation: 2,
-                            side: const BorderSide(color: Color(0xFF6F4E37), width: 1.5),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                          ),
+                          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const MoodRecommendationScreen())),
+                          style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: const Color(0xFF6F4E37), elevation: 2, side: const BorderSide(color: Color(0xFF6F4E37), width: 1.5), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
                           icon: const Icon(Icons.auto_awesome, color: Colors.orange),
                           label: const Text("ช่วยเลือกเมนู", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
                         ),
                       ),
                     ),
                     const SizedBox(width: 10),
-                    // 🔥 ปุ่ม Mystery Box (สุ่ม)
                     Expanded(
                       flex: 4,
                       child: SizedBox(
                         height: 50,
                         child: ElevatedButton.icon(
-                          onPressed: () {
-                            Navigator.push(context, MaterialPageRoute(builder: (context) => const MysteryBoxScreen()));
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.deepPurple,
-                            foregroundColor: Colors.white,
-                            elevation: 2,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                          ),
+                          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const MysteryBoxScreen())),
+                          style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple, foregroundColor: Colors.white, elevation: 2, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
                           icon: const Icon(Icons.card_giftcard),
                           label: const Text("สุ่มเลย!", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
                         ),
@@ -233,7 +254,7 @@ class _MenuScreenState extends State<MenuScreen> {
 
               // Menu Grid
               Expanded(
-                child: filteredDocs.isEmpty
+                child: displayMenus.isEmpty
                   ? Center(child: Text("ไม่พบเมนูในหมวด '$_selectedCategory'", style: const TextStyle(color: Colors.grey)))
                   : GridView.builder(
                       padding: const EdgeInsets.all(16),
@@ -243,30 +264,13 @@ class _MenuScreenState extends State<MenuScreen> {
                         crossAxisSpacing: 16,
                         mainAxisSpacing: 16,
                       ),
-                      itemCount: filteredDocs.length,
+                      itemCount: displayMenus.length,
                       itemBuilder: (ctx, i) {
-                        var doc = filteredDocs[i];
-                        var data = doc.data() as Map<String, dynamic>;
-                        List<RecipeItem> recipeList = [];
-                        if (data['recipe'] != null && data['recipe'] is List) {
-                          for (var item in data['recipe']) {
-                            if (item is Map) {
-                              recipeList.add(RecipeItem.fromMap(Map<String, dynamic>.from(item)));
-                            }
-                          }
+                        int? rank;
+                        if (_selectedCategory == "ยอดนิยม 🔥") {
+                          rank = i + 1;
                         }
-
-                        MenuItem menu = MenuItem(
-                          id: doc.id,
-                          name: data['name'] ?? 'ไม่ระบุชื่อ',
-                          price: (data['price'] ?? 0).toDouble(),
-                          category: data['category'] ?? 'อื่นๆ',
-                          imageUrl: data['imageUrl'] ?? '',
-                          recipe: recipeList,
-                          isAvailable: data['isAvailable'] ?? true, 
-                        );
-
-                        return _buildMenuCard(context, menu);
+                        return _buildMenuCard(context, displayMenus[i], rank: rank);
                       },
                     ),
               ),
@@ -293,7 +297,7 @@ class _MenuScreenState extends State<MenuScreen> {
     Navigator.push(context, MaterialPageRoute(builder: (context) => CheckoutScreen(tableNumber: widget.tableNumber, isCustomer: true)));
   }
 
-  Widget _buildMenuCard(BuildContext context, MenuItem menu) {
+  Widget _buildMenuCard(BuildContext context, MenuItem menu, {int? rank}) {
     return GestureDetector(
       onTap: menu.isAvailable ? () => _openCustomizeDialog(menu) : null,
       child: Container(
@@ -331,6 +335,25 @@ class _MenuScreenState extends State<MenuScreen> {
                         child: Text("SOLD OUT", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
                       ),
                     ),
+                  
+                  if (rank != null)
+                    Positioned(
+                      top: 8, left: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          gradient: rank <= 3 
+                              ? const LinearGradient(colors: [Color.fromARGB(255, 234, 89, 53), Color.fromARGB(255, 238, 113, 56)]) 
+                              : const LinearGradient(colors: [Color.fromARGB(255, 234, 89, 53), Color.fromARGB(255, 238, 113, 56)]),
+                          borderRadius: BorderRadius.circular(8),
+                          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 4, offset: const Offset(0, 2))]
+                        ),
+                        child: Text(
+                          "ขายดี #$rank", 
+                          style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)
+                        ),
+                      ),
+                    )
                 ],
               ),
             ),
@@ -355,5 +378,3 @@ class _MenuScreenState extends State<MenuScreen> {
     );
   }
 }
-
-

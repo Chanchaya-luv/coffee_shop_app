@@ -319,7 +319,10 @@ class _StockScreenState extends State<StockScreen> {
                                         children: [
                                           Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                                           const SizedBox(height: 4),
-                                          Row(
+                                          Wrap(
+  spacing: 0,
+  runSpacing: 4,
+  crossAxisAlignment: WrapCrossAlignment.center,
                                             children: [
                                               Container(
                                                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),

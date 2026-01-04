@@ -26,6 +26,9 @@ class _AddMenuScreenState extends State<AddMenuScreen> {
   final List<String> _allTypes = ['ร้อน', 'เย็น', 'ปั่น'];
   List<String> _selectedTypes = ['ร้อน', 'เย็น', 'ปั่น']; 
 
+  final List<String> _allMilks = ['นมวัว', 'นมโอ๊ต', 'นมถั่วเหลือง', 'ไม่ใส่นม'];
+  List<String> _selectedMilks = ['นมวัว', 'นมโอ๊ต', 'นมถั่วเหลือง'];
+
   bool _isLoading = false;
 
   @override
@@ -49,6 +52,17 @@ class _AddMenuScreenState extends State<AddMenuScreen> {
         if (cat == 'ผลไม้') _selectedTypes = ['ปั่น'];
         else if (['เบเกอรี่', 'ขนม', 'เค้ก'].contains(cat)) _selectedTypes = [];
         else _selectedTypes = ['ร้อน', 'เย็น', 'ปั่น'];
+      }
+
+      if (widget.data!['availableMilks'] != null) {
+        _selectedMilks = List<String>.from(widget.data!['availableMilks']);
+      } else {
+        // Default เก่าตามหมวดหมู่
+        if (['กาแฟ', 'ชา', 'นมสด'].contains(cat)) {
+             _selectedMilks = ['นมวัว', 'นมโอ๊ต (+10)', 'นมถั่วเหลือง'];
+        } else {
+             _selectedMilks = ['ไม่ใส่นม'];
+        }
       }
     }
   }
@@ -80,6 +94,7 @@ class _AddMenuScreenState extends State<AddMenuScreen> {
         'imageUrl': _imageUrlCtrl.text.trim(),
         'isAvailable': _isAvailable,
         'availableTypes': _selectedTypes, // 🔥 บันทึกประเภท
+        'availableMilks': _selectedMilks, // 🔥 บันทึกนมที่เลือก
         'updatedAt': FieldValue.serverTimestamp(),
       };
 
@@ -160,6 +175,29 @@ class _AddMenuScreenState extends State<AddMenuScreen> {
                 ),
                 const SizedBox(height: 15),
               ],
+
+              // --- 🔥 เลือกนม (Milk Options) ---
+                const Text("นมที่เลือกได้ (Milk Options)", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                Wrap(
+                  spacing: 10,
+                  children: _allMilks.map((milk) {
+                    bool isSelected = _selectedMilks.contains(milk);
+                    return FilterChip(
+                      label: Text(milk),
+                      selected: isSelected,
+                      selectedColor: const Color(0xFF6F4E37),
+                      checkmarkColor: Colors.white,
+                      labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.black),
+                      onSelected: (bool selected) {
+                        setState(() {
+                          if (selected) _selectedMilks.add(milk); else _selectedMilks.remove(milk);
+                        });
+                      },
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 15),
+              
 
               TextFormField(controller: _imageUrlCtrl, decoration: const InputDecoration(labelText: "ลิงก์รูปภาพ", border: OutlineInputBorder(), filled: true, fillColor: Colors.white, prefixIcon: Icon(Icons.image))),
               

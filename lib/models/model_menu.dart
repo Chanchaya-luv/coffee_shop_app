@@ -34,6 +34,7 @@ class MenuItem {
   final List<RecipeItem> recipe;
   final bool isAvailable; // --- 🔥 เพิ่มตัวแปรเช็คของหมด ---
   final List<String> availableTypes; 
+  final List<String> availableMilks;
 
   MenuItem({
     required this.id, 
@@ -44,5 +45,6 @@ class MenuItem {
     required this.recipe,
     this.isAvailable = true, // ค่า Default คือมีของ (True)
     this.availableTypes = const ['ร้อน', 'เย็น', 'ปั่น'], 
+    this.availableMilks = const ['นมวัว', 'นมโอ๊ต', 'นมถั่วเหลือง', 'ไม่ใส่นม'],
   });
 }

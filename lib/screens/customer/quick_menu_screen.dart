@@ -22,23 +22,10 @@ class _QuickMenuScreenState extends State<QuickMenuScreen> {
   int _selectedIndex = 0;
 
   void _openCustomizeDialog(MenuItem menu) {
-    // --- 🔥 Logic เช็คหมวดหมู่ (เหมือนฝั่งลูกค้า) ---
-    // ถ้าเป็น เบเกอรี่ หรือ ของหวาน ไม่ต้องถามความหวาน/นม
+    // --- 🔥 แก้ไขเงื่อนไข ---
     if (['เบเกอรี่', 'ขนม', 'เค้ก', 'ของหวาน'].contains(menu.category)) {
-      
-      // เพิ่มลงตะกร้าทันที (ระบุ option เป็น '-')
-      Provider.of<CartProvider>(context, listen: false).addItem(
-        menu, 
-        sweetness: '-', 
-        milk: '-'
-      );
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("เพิ่ม ${menu.name} แล้ว"), 
-          duration: const Duration(milliseconds: 500) // ลดเวลาให้เร็วขึ้นสำหรับ Admin
-        )
-      );
+      Provider.of<CartProvider>(context, listen: false).addItem(menu, sweetness: '-', milk: '-', type: 'ปกติ', priceAdjustment: 0.0);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("เพิ่ม ${menu.name} แล้ว"), duration: const Duration(milliseconds: 500)));
       return; 
     }
 
@@ -176,6 +163,13 @@ class _QuickMenuScreenState extends State<QuickMenuScreen> {
                   } else if ((data['category'] ?? '') == 'ผลไม้') {
                       // ถ้าไม่มีข้อมูล แต่เป็นผลไม้ ให้ default เป็นปั่น
                       types = ['ปั่น'];
+                  }
+                  // --- 🔥 ดึงข้อมูล Available Milks ---
+                  List<String> milks = ['นมวัว', 'นมโอ๊ต (+10)', 'นมถั่วเหลือง'];
+                  if (data['availableMilks'] != null && data['availableMilks'] is List) {
+                    milks = List<String>.from(data['availableMilks']);
+                  } else if (!['กาแฟ', 'ชา', 'นมสด'].contains(data['category'])) {
+                    milks = ['ไม่ใส่นม'];
                   }
                   }
 
