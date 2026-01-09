@@ -106,7 +106,7 @@ class _SettingScreenState extends State<SettingScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Row(children: [
-                    CircleAvatar(radius: 24, backgroundImage: NetworkImage('https://img5.pic.in.th/file/secure-sv1/05871915-7cac-440c-9a52-17e6d9d71b4c.md.png'), backgroundColor: Colors.transparent),
+                    CircleAvatar(radius: 24, backgroundImage: NetworkImage('https://img5.pic.in.th/file/secure-sv1/Black-and-White-Simple-Coffee-Shop-Logo4e21f60f252ab480.th.png'), backgroundColor: Colors.transparent),
                     SizedBox(width: 10),
                     Text("Caffy", style: TextStyle(fontFamily: 'Serif', fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white)),
                   ]),

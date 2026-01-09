@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; 
 import '../../models/model_menu.dart';
 
 class VisualProductCustomizeDialog extends StatefulWidget {
@@ -24,7 +24,6 @@ class _VisualProductCustomizeDialogState extends State<VisualProductCustomizeDia
   double _priceAdj = 5.0; 
   
   List<String> _availableTypes = [];
-  // --- 🔥 ตัวแปรเก็บนมที่ขายได้จริง ---
   List<String> _availableMilks = [];
 
   late AnimationController _liquidController;
@@ -43,7 +42,7 @@ class _VisualProductCustomizeDialogState extends State<VisualProductCustomizeDia
 
     _availableMilks = widget.menu.availableMilks;
     if (_availableMilks.isEmpty) {
-         // Default
+         // --- 🔥 แก้ไข: เปลี่ยนชื่อให้สั้นลง (เอา +10 ออก) ---
          _availableMilks = ['นมวัว', 'นมโอ๊ต', 'นมถั่วเหลือง', 'ไม่ใส่นม'];
     }
 
@@ -88,7 +87,13 @@ class _VisualProductCustomizeDialogState extends State<VisualProductCustomizeDia
            if (realMilks.isNotEmpty) {
              setState(() {
                 _availableMilks = realMilks;
-                if (!_availableMilks.contains(_milk)) _milk = _availableMilks.first;
+                // กรองตัวที่ซ้ำ (เช่น ถ้ามีทั้ง นมโอ๊ต และ นมโอ๊ต (+10) ให้เอาอันยาวออก หรือเลือกแค่อันเดียว)
+                // แต่เพื่อความง่าย เราจะใช้ตาม DB เลย แต่ถ้าชื่อเปลี่ยน เราต้อง auto select ใหม่
+                if (!_availableMilks.contains(_milk)) {
+                    // พยายามหาตัวที่ใกล้เคียง
+                    if (_availableMilks.contains('นมโอ๊ต')) _milk = 'นมโอ๊ต';
+                    else _milk = _availableMilks.first;
+                }
              });
            }
         }
@@ -138,6 +143,13 @@ class _VisualProductCustomizeDialogState extends State<VisualProductCustomizeDia
        if (widget.menu.category != 'ผลไม้') baseColor = Color.alphaBlend(Colors.white.withOpacity(0.4), baseColor);
     }
     
+    // --- 🔥 เช็คคำว่า 'โอ๊ต' แทนการเช็คชื่อเต็ม เพื่อรองรับทั้งมี/ไม่มี (+10) ---
+    if (_milk.contains('โอ๊ต')) {
+       baseColor = Color.alphaBlend(const Color(0xFFD7CCC8).withOpacity(0.5), baseColor);
+    } else if (_milk.contains('ถั่วเหลือง')) {
+       baseColor = Color.alphaBlend(const Color(0xFFFFECB3).withOpacity(0.5), baseColor);
+    }
+    
     if (_sweetness == '0%') return baseColor.withOpacity(0.9);
     if (_sweetness == '125%') return baseColor.withOpacity(0.7);
     return baseColor;
@@ -169,7 +181,13 @@ class _VisualProductCustomizeDialogState extends State<VisualProductCustomizeDia
       child: Container(
         width: double.infinity,
         height: 680, 
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(25), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 20, spreadRadius: 5)]),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(25),
+          boxShadow: [
+            BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 20, spreadRadius: 5),
+          ],
+        ),
         child: Column(
           children: [
             // 1. Visualizer
@@ -196,36 +214,59 @@ class _VisualProductCustomizeDialogState extends State<VisualProductCustomizeDia
                   children: [
                     const Text("เลือกประเภท (Type)", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
                     const SizedBox(height: 10),
-                    Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [if (_availableTypes.contains('ร้อน')) _buildTypeChip("ร้อน", "ร้อน"), if (_availableTypes.contains('เย็น')) _buildTypeChip("เย็น", "เย็น"), if (_availableTypes.contains('ปั่น')) _buildTypeChip(widget.menu.category == 'ผลไม้' ? "ปั่น" : "ปั่น", "ปั่น")]),
-                    
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        if (_availableTypes.contains('ร้อน')) _buildTypeChip("ร้อน", "ร้อน"),
+                        if (_availableTypes.contains('เย็น')) _buildTypeChip("เย็น", "เย็น"),
+                        if (_availableTypes.contains('ปั่น')) _buildTypeChip(widget.menu.category == 'ผลไม้' ? "ปั่น" : "ปั่น", "ปั่น"),
+                      ],
+                    ),
                     const SizedBox(height: 15),
+
                     const Text("ระดับความหวาน (Sweetness)", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
                     const SizedBox(height: 10),
-                    SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: ['0%', '25%', '50%', 'ปกติ', '125%'].map((val) { bool isSelected = (val == 'ปกติ' && _sweetness == 'ปกติ (100%)') || (_sweetness == val); return Padding(padding: const EdgeInsets.only(right: 8.0), child: ChoiceChip(label: Text(val), selected: isSelected, selectedColor: const Color(0xFFA6C48A), labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.black), onSelected: (sel) => setState(() => _sweetness = val == 'ปกติ' ? 'ปกติ (100%)' : val))); }).toList())),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal, 
+                      child: Row(
+                        children: ['0%', '25%', '50%', 'ปกติ', '125%'].map((val) {
+                          bool isSelected = (val == 'ปกติ' && _sweetness == 'ปกติ (100%)') || (_sweetness == val);
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 8.0), 
+                            child: ChoiceChip(
+                              label: Text(val), 
+                              selected: isSelected, 
+                              selectedColor: const Color(0xFFA6C48A), 
+                              labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.black), 
+                              onSelected: (sel) => setState(() => _sweetness = val == 'ปกติ' ? 'ปกติ (100%)' : val)
+                            )
+                          );
+                        }).toList()
+                      )
+                    ),
                     
                     const SizedBox(height: 15),
-                    // --- 🔥 เลือกนมตามที่กำหนดใน DB ---
-                    if (_availableMilks.isNotEmpty) ...[
-                      const Text("ประเภทนม (Milk)", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
-                      const SizedBox(height: 10),
-                      SingleChildScrollView(
-                        scrollDirection: Axis.horizontal, 
-                        child: Row(
-                          children: _availableMilks.map((val) => 
-                            Padding(
-                              padding: const EdgeInsets.only(right: 8.0), 
-                              child: ChoiceChip(
-                                label: Text(val), 
-                                selected: _milk == val, 
-                                selectedColor: const Color(0xFF6F4E37), 
-                                labelStyle: TextStyle(color: _milk == val ? Colors.white : Colors.black), 
-                                onSelected: (sel) => setState(() => _milk = val)
-                              )
+                    const Text("ประเภทนม (Milk)", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
+                    const SizedBox(height: 10),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal, 
+                      child: Row(
+                        children: _availableMilks.map((val) {
+                          // --- 🔥 กรองการแสดงผล: ถ้าเจอตัวที่มี +10 ให้แสดงชื่อเฉยๆ แต่เก็บค่าเดิมไว้ หรือถ้าแก้ที่ต้นทางแล้วก็แสดงเลย ---
+                          // แต่ในที่นี้เราแก้ source ให้เป็น 'นมโอ๊ต' แล้ว ดังนั้นแสดงได้เลย
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 8.0), 
+                            child: ChoiceChip(
+                              label: Text(val), 
+                              selected: _milk == val, 
+                              selectedColor: const Color(0xFF6F4E37), 
+                              labelStyle: TextStyle(color: _milk == val ? Colors.white : Colors.black), 
+                              onSelected: (sel) => setState(() => _milk = val)
                             )
-                          ).toList()
-                        )
-                      ),
-                    ],
+                          );
+                        }).toList()
+                      )
+                    ),
                     
                     const Spacer(),
                     SizedBox(width: double.infinity, height: 50, child: ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFA6C48A), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))), onPressed: () { widget.onConfirm(_sweetness, _milk, _type, _priceAdj); Navigator.pop(context); }, child: Text("เพิ่ม ฿${finalPrice.toStringAsFixed(0)}", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white))))

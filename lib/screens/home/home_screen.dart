@@ -1,4 +1,5 @@
 import 'dart:async'; 
+import 'package:coffee_shop_app/screens/admin/add_promotion_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
@@ -432,7 +433,7 @@ class _HomeScreenState extends State<HomeScreen> {
       {
         'icon': Icons.local_offer, 
         'label': 'จัดการโปรโมชั่น', 
-        'page': const PromotionManagementScreen()
+        'page': const AddPromotionScreen()
       },
       {'icon': Icons.percent, 'label': 'คำนวณ GP', 'page': const GPCalculatorScreen()},
       {

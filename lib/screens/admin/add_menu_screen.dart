@@ -59,7 +59,7 @@ class _AddMenuScreenState extends State<AddMenuScreen> {
       } else {
         // Default เก่าตามหมวดหมู่
         if (['กาแฟ', 'ชา', 'นมสด'].contains(cat)) {
-             _selectedMilks = ['นมวัว', 'นมโอ๊ต (+10)', 'นมถั่วเหลือง'];
+             _selectedMilks = ['นมวัว', 'นมโอ๊ต', 'นมถั่วเหลือง'];
         } else {
              _selectedMilks = ['ไม่ใส่นม'];
         }

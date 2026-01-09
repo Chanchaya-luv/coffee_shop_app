@@ -20,7 +20,7 @@ class _MysteryBoxScreenState extends State<MysteryBoxScreen> with SingleTickerPr
   
   bool _isPlaying = false;
   
-  // 🔥 ปรับราคาเป็น 44 บาท
+  // ราคา Fixed Price
   final double _gachaPrice = 44.0;
 
   @override
@@ -40,7 +40,7 @@ class _MysteryBoxScreenState extends State<MysteryBoxScreen> with SingleTickerPr
   }
 
   void _playGacha() async {
-    // 🔥 เช็คซ้ำอีกรอบกันเหนียว
+    // 1. เช็คสิทธิ์
     final cart = Provider.of<CartProvider>(context, listen: false);
     bool alreadyPlayed = cart.items.values.any((item) => item.menu.id.contains('GACHA'));
     
@@ -53,10 +53,9 @@ class _MysteryBoxScreenState extends State<MysteryBoxScreen> with SingleTickerPr
       _isPlaying = true;
     });
 
-    // 1. เริ่ม Animation
     _controller.repeat(reverse: true);
 
-    // 2. ดึงสินค้าทั้งหมด (เฉพาะเครื่องดื่ม)
+    // 2. ดึงสินค้า
     var snapshot = await FirebaseFirestore.instance
         .collection('menu_items')
         .where('isAvailable', isEqualTo: true)
@@ -65,7 +64,7 @@ class _MysteryBoxScreenState extends State<MysteryBoxScreen> with SingleTickerPr
     List<MenuItem> pool = [];
     for (var doc in snapshot.docs) {
        var data = doc.data();
-       if (['กาแฟ', 'ชา', 'นมสด','ผลไม้'].contains(data['category'])) {
+       if (['กาแฟ', 'ชา', 'นมสด'].contains(data['category'])) {
           pool.add(MenuItem(
             id: doc.id,
             name: data['name'] ?? '',
@@ -78,26 +77,24 @@ class _MysteryBoxScreenState extends State<MysteryBoxScreen> with SingleTickerPr
        }
     }
 
-    // 3. จำลองเวลาลุ้น (3 วินาที)
     await Future.delayed(const Duration(seconds: 3));
 
-    _controller.stop(); // หยุดเขย่า
+    _controller.stop(); 
 
     if (pool.length >= 2) {
-      // 4. สุ่ม 2 รายการ (ไม่ซ้ำกัน)
+      // 3. สุ่ม 2 แก้ว
       var random = Random();
       MenuItem item1 = pool[random.nextInt(pool.length)];
       MenuItem item2;
       do {
         item2 = pool[random.nextInt(pool.length)];
-      } while (item1.id == item2.id); // วนหาใหม่ถ้าซ้ำกับอันแรก
+      } while (item1.id == item2.id); 
 
       setState(() {
         _isPlaying = false;
       });
       
-      // โชว์ Dialog รางวัลคู่
-      _showRewardDialog(item1, item2);
+      if (mounted) _showRewardDialog(item1, item2);
     } else {
       setState(() => _isPlaying = false);
       if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("สินค้าในระบบไม่พอสำหรับสุ่มคู่")));
@@ -116,7 +113,6 @@ class _MysteryBoxScreenState extends State<MysteryBoxScreen> with SingleTickerPr
             const Text("🎉 ยินดีด้วย! คุณได้รับ 🎉", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.orange)),
             const SizedBox(height: 15),
             
-            // แสดงรูปคู่
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -140,18 +136,25 @@ class _MysteryBoxScreenState extends State<MysteryBoxScreen> with SingleTickerPr
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFA6C48A), foregroundColor: Colors.white),
             onPressed: () {
-              // เพิ่มลงตะกร้าเป็น 1 รายการรวม (Bundle)
               MenuItem gachaBundle = MenuItem(
-                id: "MYSTERY_BOX_GACHA", // ID พิเศษ
+                id: "MYSTERY_BOX_GACHA",
                 name: "กล่องสุ่ม (${item1.name} + ${item2.name})",
-                price: _gachaPrice, // ราคา 44
+                price: _gachaPrice, // ราคา 44 บาท
                 category: 'Promotion',
                 imageUrl: 'https://cdn-icons-png.flaticon.com/512/4522/4522489.png',
                 recipe: [], 
                 isAvailable: true,
               );
               
-              Provider.of<CartProvider>(context, listen: false).addItem(gachaBundle);
+              // --- 🔥 แก้ไขตรงนี้: กำหนด Type เป็นปกติ และ PriceAdj เป็น 0 ---
+              Provider.of<CartProvider>(context, listen: false).addItem(
+                gachaBundle,
+                type: 'ปกติ',         // ไม่ใช่เย็น
+                priceAdjustment: 0.0, // ไม่บวก 5 บาท
+                sweetness: '-',       // ไม่ระบุหวาน
+                milk: '-'             // ไม่ระบุนม
+              );
+
               Navigator.pop(ctx); 
               Navigator.pop(context); 
               
@@ -170,7 +173,7 @@ class _MysteryBoxScreenState extends State<MysteryBoxScreen> with SingleTickerPr
         ClipRRect(
           borderRadius: BorderRadius.circular(10),
           child: item.imageUrl.isNotEmpty
-            ? Image.network(item.imageUrl, width: 70, height: 70, fit: BoxFit.cover)
+            ? Image.network(item.imageUrl, width: 70, height: 70, fit: BoxFit.cover, errorBuilder: (c,e,s) => const Icon(Icons.local_cafe, size: 50, color: Colors.brown))
             : const Icon(Icons.local_cafe, size: 50, color: Colors.brown),
         ),
       ],
@@ -179,7 +182,6 @@ class _MysteryBoxScreenState extends State<MysteryBoxScreen> with SingleTickerPr
 
   @override
   Widget build(BuildContext context) {
-    // --- 🔥 เช็คสิทธิ์: มีกล่องสุ่มในตะกร้าหรือยัง? ---
     final cart = Provider.of<CartProvider>(context);
     bool hasPlayed = cart.items.values.any((item) => item.menu.id.contains('GACHA'));
 
@@ -192,78 +194,79 @@ class _MysteryBoxScreenState extends State<MysteryBoxScreen> with SingleTickerPr
         foregroundColor: Colors.white,
       ),
       body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // กล่องสุ่ม Animation
-            AnimatedBuilder(
-              animation: _shakeAnimation,
-              builder: (context, child) {
-                return Transform.translate(
-                  offset: Offset(_isPlaying ? _shakeAnimation.value : 0, 0),
-                  child: child,
-                );
-              },
-              child: GestureDetector(
-                // ถ้าใช้สิทธิ์แล้ว กดไม่ได้
-                onTap: hasPlayed || _isPlaying ? null : _playGacha,
-                child: Opacity(
-                  opacity: hasPlayed ? 0.5 : 1.0, // จางลงถ้าเล่นแล้ว
-                  child: Image.network(
-                    'https://cdn-icons-png.flaticon.com/512/4522/4522489.png',
-                    width: 250,
-                    color: _isPlaying ? Colors.white.withOpacity(0.8) : null,
-                    colorBlendMode: BlendMode.modulate,
+        child: SingleChildScrollView( // ป้องกัน Overflow
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              AnimatedBuilder(
+                animation: _shakeAnimation,
+                builder: (context, child) {
+                  return Transform.translate(
+                    offset: Offset(_isPlaying ? _shakeAnimation.value : 0, 0),
+                    child: child,
+                  );
+                },
+                child: GestureDetector(
+                  onTap: hasPlayed || _isPlaying ? null : _playGacha,
+                  child: Opacity(
+                    opacity: hasPlayed ? 0.5 : 1.0, 
+                    child: Image.network(
+                      'https://cdn-icons-png.flaticon.com/512/4522/4522489.png',
+                      width: 250,
+                      color: _isPlaying ? Colors.white.withOpacity(0.8) : null,
+                      colorBlendMode: BlendMode.modulate,
+                      errorBuilder: (c,e,s) => const Icon(Icons.card_giftcard, size: 150, color: Colors.orange),
+                    ),
                   ),
                 ),
               ),
-            ),
-            
-            const SizedBox(height: 40),
-            
-            if (_isPlaying)
-              const Column(
-                children: [
-                  Text("กำลังสุ่ม...", style: TextStyle(fontSize: 24, color: Colors.white, fontWeight: FontWeight.bold)),
-                  SizedBox(height: 10),
-                  CircularProgressIndicator(color: Colors.orange),
-                ],
-              )
-            else
-              Column(
-                children: [
-                  const Text("กล่องสุ่มลุ้นเมนูจับคู่", style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white)),
-                  const SizedBox(height: 10),
-                  Text("รับ 2 เมนู ในราคาเพียง ฿${_gachaPrice.toStringAsFixed(0)}", style: const TextStyle(fontSize: 16, color: Colors.white70)),
-                  const SizedBox(height: 40),
-                  
-                  // ปุ่มกด
-                  SizedBox(
-                    width: 220,
-                    height: 55,
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: hasPlayed ? Colors.grey : Colors.orange, // เปลี่ยนสีถ้าเล่นแล้ว
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30))
-                      ),
-                      onPressed: hasPlayed ? null : _playGacha, // ล็อกปุ่มถ้าเล่นแล้ว
-                      icon: Icon(hasPlayed ? Icons.lock : Icons.casino),
-                      label: Text(
-                        hasPlayed ? "ใช้สิทธิ์ไปแล้ว" : "กดเพื่อสุ่ม (44.-)", 
-                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)
+              
+              const SizedBox(height: 40),
+              
+              if (_isPlaying)
+                const Column(
+                  children: [
+                    Text("กำลังสุ่ม...", style: TextStyle(fontSize: 24, color: Colors.white, fontWeight: FontWeight.bold)),
+                    SizedBox(height: 10),
+                    CircularProgressIndicator(color: Colors.orange),
+                  ],
+                )
+              else
+                Column(
+                  children: [
+                    const Text("กล่องสุ่มลุ้นเครื่องดื่ม", style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white)),
+                    const SizedBox(height: 10),
+                    Text("รับ 2 เมนู ในราคาเพียง ฿${_gachaPrice.toStringAsFixed(0)}", style: const TextStyle(fontSize: 16, color: Colors.white70)),
+                    const SizedBox(height: 40),
+                    
+                    SizedBox(
+                      width: 220,
+                      height: 55,
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: hasPlayed ? Colors.grey : Colors.orange, 
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30))
+                        ),
+                        onPressed: hasPlayed ? null : _playGacha, 
+                        icon: Icon(hasPlayed ? Icons.lock : Icons.casino),
+                        label: Text(
+                          hasPlayed ? "ใช้สิทธิ์ไปแล้ว" : "กดเพื่อสุ่ม (44.-)", 
+                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)
+                        ),
                       ),
                     ),
-                  ),
-                  
-                  if (hasPlayed)
-                    const Padding(
-                      padding: EdgeInsets.only(top: 15),
-                      child: Text("(จำกัด 1 สิทธิ์ต่อ 1 ออเดอร์)", style: TextStyle(color: Colors.redAccent)),
-                    )
-                ],
-              )
-          ],
+                    
+                    if (hasPlayed)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 15),
+                        child: Text("(จำกัด 1 สิทธิ์ต่อ 1 ออเดอร์)", style: TextStyle(color: Colors.redAccent)),
+                      )
+                  ],
+                )
+            ],
+          ),
         ),
       ),
     );

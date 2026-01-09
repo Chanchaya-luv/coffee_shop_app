@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
+
+import 'add_promotion_screen.dart'; // Import หน้าเพิ่ม/แก้ไข
 
 class PromotionManagementScreen extends StatefulWidget {
   const PromotionManagementScreen({super.key});
@@ -10,167 +13,33 @@ class PromotionManagementScreen extends StatefulWidget {
 
 class _PromotionManagementScreenState extends State<PromotionManagementScreen> {
   
-  // ฟังก์ชันแสดง Dialog (ใช้ทั้งเพิ่มและแก้ไข)
-  void _showManageDialog(BuildContext context, {String? id, Map<String, dynamic>? data}) {
-    final isEditing = id != null;
-    
-    final nameCtrl = TextEditingController(text: isEditing ? data!['name'] : '');
-    
-    // --- 🔥 เปลี่ยน Default เป็น flat_amount ---
-    String type = isEditing ? data!['type'] : 'flat_amount';
-
-// 🔥 ปรับของเก่าที่เป็น flat_percent ให้เข้ากับระบบใหม่
-if (type == 'flat_percent') {
-  type = 'flat_amount';
-}
-
-    
-    // ตัวแปรสำหรับเงื่อนไข
-    final val1Ctrl = TextEditingController(); // amount / buy / start
-    final val2Ctrl = TextEditingController(); // - / get / end
-
-    // ดึงข้อมูลเดิมมาใส่ (ถ้าแก้ไข)
-    if (isEditing) {
-      Map conditions = data!['conditions'] ?? {};
-      
-      // --- 🔥 แก้ไขการดึงข้อมูล ---
-      if (type == 'flat_amount') {
-        val1Ctrl.text = (conditions['amount'] ?? 0).toString(); // ดึงค่า amount
-      } else if (type == 'flat_percent') { 
-        // เผื่อของเก่าที่เป็น percent ยังมีอยู่
-        val1Ctrl.text = (conditions['percent'] ?? 0).toString();
-      } else if (type == 'buy_x_get_y') {
-        val1Ctrl.text = (conditions['buy'] ?? 1).toString();
-        val2Ctrl.text = (conditions['get'] ?? 1).toString();
-      } else if (type == 'time_based') {
-        val1Ctrl.text = conditions['start'] ?? '';
-        val2Ctrl.text = conditions['end'] ?? '';
-      }
-    }
-
+  // ฟังก์ชันลบโปรโมชั่น
+  void _deletePromotion(String id, String name) {
     showDialog(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
-          title: Text(isEditing ? "แก้ไขโปรโมชั่น" : "สร้างโปรโมชั่นใหม่"),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: nameCtrl, 
-                  decoration: const InputDecoration(labelText: "ชื่อโปรโมชั่น", hintText: "เช่น ส่วนลด 10 บาท, Happy Hour")
-                ),
-                const SizedBox(height: 10),
-                
-                DropdownButtonFormField<String>(
-                  value: type,
-                  decoration: const InputDecoration(labelText: "ประเภท"),
-                  items: const [
-                    // --- 🔥 เปลี่ยนตัวเลือก ---
-                    DropdownMenuItem(value: 'flat_amount', child: Text("ลด (บาท) ท้ายบิล")),
-                    DropdownMenuItem(value: 'time_based', child: Text("Happy Hour (ลดตามเวลา)")),
-                    DropdownMenuItem(value: 'buy_x_get_y', child: Text("ซื้อ X แถม Y")),
-                  ],
-                  onChanged: (val) => setState(() => type = val!),
-                ),
-                const SizedBox(height: 10),
-                
-                // Input ตามประเภท
-                // --- 🔥 เปลี่ยนช่องกรอกเป็น บาท ---
-                if (type == 'flat_amount' || type == 'flat_percent')
-                  TextField(
-                    controller: val1Ctrl, 
-                    decoration: const InputDecoration(labelText: "จำนวนเงินที่ลด (บาท)"), 
-                    keyboardType: TextInputType.number
-                  ),
-                
-                if (type == 'buy_x_get_y')
-                  Row(
-                    children: [
-                      Expanded(child: TextField(controller: val1Ctrl, decoration: const InputDecoration(labelText: "ซื้อ (Buy)"), keyboardType: TextInputType.number)),
-                      const SizedBox(width: 10),
-                      Expanded(child: TextField(controller: val2Ctrl, decoration: const InputDecoration(labelText: "แถม (Get)"), keyboardType: TextInputType.number)),
-                    ],
-                  ),
-                  
-                if (type == 'time_based') ...[
-                  TextField(controller: val1Ctrl, decoration: const InputDecoration(labelText: "เวลาเริ่ม (เช่น 14:00)", hintText: "HH:mm")),
-                  const SizedBox(height: 10),
-                  TextField(controller: val2Ctrl, decoration: const InputDecoration(labelText: "เวลาจบ (เช่น 16:00)", hintText: "HH:mm")),
-                  const SizedBox(height: 5),
-                  const Text("ลด 50% (Fix)", style: TextStyle(color: Colors.grey, fontSize: 12)),
-                ]
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("ยกเลิก")),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6F4E37), foregroundColor: Colors.white),
-              onPressed: () async {
-                if (nameCtrl.text.isNotEmpty) {
-                  Map<String, dynamic> conditions = {};
-                  
-                  // --- 🔥 บันทึกเป็น amount ---
-                  if (type == 'flat_amount') {
-                    conditions['amount'] = int.tryParse(val1Ctrl.text) ?? 0;
-                  } else if (type == 'flat_percent') {
-                     // แปลงของเก่าให้เป็นแบบใหม่ (หรือเก็บแบบเดิมถ้าต้องการ)
-                     type = 'flat_amount';
-                     conditions['amount'] = int.tryParse(val1Ctrl.text) ?? 0;
-                  } 
-                  else if (type == 'buy_x_get_y') {
-                    conditions['buy'] = int.tryParse(val1Ctrl.text) ?? 1;
-                    conditions['get'] = int.tryParse(val2Ctrl.text) ?? 1;
-                  } else if (type == 'time_based') {
-                    conditions['start'] = val1Ctrl.text;
-                    conditions['end'] = val2Ctrl.text;
-                    conditions['percent'] = 50; 
-                  }
-
-                  final promoData = {
-                    'name': nameCtrl.text,
-                    'type': type,
-                    'conditions': conditions,
-                    'isActive': true, 
-                  };
-
-                  if (isEditing) {
-                    await FirebaseFirestore.instance.collection('promotions').doc(id).update(promoData);
-                  } else {
-                    await FirebaseFirestore.instance.collection('promotions').add(promoData);
-                  }
-                  
-                  if (mounted) Navigator.pop(ctx);
-                }
-              },
-              child: Text(isEditing ? "บันทึก" : "สร้าง"),
-            )
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _deletePromotion(String id) {
-    showDialog(
-      context: context, 
       builder: (ctx) => AlertDialog(
         title: const Text("ยืนยันการลบ"),
-        content: const Text("ต้องการลบโปรโมชั่นนี้ใช่หรือไม่?"),
+        content: Text("คุณต้องการลบโปรโมชั่น '$name' ใช่หรือไม่?"),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("ยกเลิก")),
           TextButton(
-            onPressed: () {
-               FirebaseFirestore.instance.collection('promotions').doc(id).delete();
-               Navigator.pop(ctx);
+            onPressed: () async {
+              await FirebaseFirestore.instance.collection('promotions').doc(id).delete();
+              if (mounted) Navigator.pop(ctx);
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("ลบเรียบร้อย")));
             }, 
             child: const Text("ลบ", style: TextStyle(color: Colors.red))
           ),
         ],
-      )
+      ),
     );
+  }
+
+  // ฟังก์ชันสลับสถานะเปิด/ปิด
+  void _toggleActive(String id, bool currentValue) {
+    FirebaseFirestore.instance.collection('promotions').doc(id).update({
+      'isActive': !currentValue,
+    });
   }
 
   @override
@@ -178,65 +47,122 @@ if (type == 'flat_percent') {
     return Scaffold(
       backgroundColor: const Color(0xFFF9F9F9),
       appBar: AppBar(
-        title: const Text("จัดการโปรโมชั่น", style: TextStyle(fontWeight: FontWeight.bold)), 
-        backgroundColor: const Color(0xFF6F4E37), 
-        foregroundColor: Colors.white
+        title: const Text("จัดการโปรโมชั่น", style: TextStyle(fontWeight: FontWeight.bold)),
+        backgroundColor: const Color(0xFF6F4E37),
+        foregroundColor: Colors.white,
+        elevation: 0,
       ),
       body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance.collection('promotions').snapshots(),
+        stream: FirebaseFirestore.instance.collection('promotions').orderBy('createdAt', descending: true).snapshots(),
         builder: (context, snapshot) {
           if (snapshot.hasError) return const Center(child: Text("เกิดข้อผิดพลาด"));
           if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
           
-          var docs = snapshot.data!.docs;
-          if (docs.isEmpty) return const Center(child: Text("ยังไม่มีโปรโมชั่น"));
+          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+            return const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.local_offer_outlined, size: 60, color: Colors.grey),
+                  SizedBox(height: 10),
+                  Text("ยังไม่มีโปรโมชั่น", style: TextStyle(color: Colors.grey)),
+                ],
+              ),
+            );
+          }
 
-          return ListView.builder(
+          return ListView.separated(
             padding: const EdgeInsets.all(16),
-            itemCount: docs.length,
+            itemCount: snapshot.data!.docs.length,
+            separatorBuilder: (_,__) => const SizedBox(height: 10),
             itemBuilder: (context, index) {
-              var data = docs[index].data() as Map<String, dynamic>;
-              bool isActive = data['isActive'] ?? true;
-              String type = data['type'] ?? '';
-              Map conditions = data['conditions'] ?? {};
+              var doc = snapshot.data!.docs[index];
+              var data = doc.data() as Map<String, dynamic>;
+              
+              String name = data['name'] ?? 'ไม่ระบุชื่อ';
+              String code = data['code'] ?? '-';
+              String type = data['type'] ?? 'quantity_discount';
+              bool isActive = data['isActive'] ?? false;
+              Map<String, dynamic> conditions = data['conditions'] ?? {};
 
-              String detail = "";
-              // --- 🔥 แสดงผลเป็นบาท ---
-              if (type == 'flat_amount') detail = "ลด ${conditions['amount']} บาท";
-              else if (type == 'flat_percent') detail = "ลด ${conditions['percent']}%"; // รองรับของเก่า
-              else if (type == 'buy_x_get_y') detail = "ซื้อ ${conditions['buy']} แถม ${conditions['get']}";
-              else if (type == 'time_based') detail = "${conditions['start']} - ${conditions['end']} (ลด ${conditions['percent']}%)";
+              String detailText = "";
+              if (type == 'quantity_discount') {
+                detailText = "ซื้อครบ ${conditions['minQty']} แก้ว ลด ${conditions['discountAmount']} บาท";
+              } else if (type == 'buy_x_get_y') {
+                detailText = "ซื้อ ${conditions['buy']} แถม ${conditions['get']}";
+              }
 
               return Card(
                 elevation: 2,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                child: ListTile(
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  leading: CircleAvatar(
-                    backgroundColor: isActive ? Colors.green[50] : Colors.grey[200],
-                    child: Icon(Icons.local_offer, color: isActive ? Colors.green : Colors.grey),
-                  ),
-                  title: Text(data['name'], style: TextStyle(fontWeight: FontWeight.bold, color: isActive ? Colors.black : Colors.grey)),
-                  subtitle: Text(detail),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Switch(
-                        value: isActive,
-                        activeColor: Colors.green,
-                        onChanged: (val) {
-                          FirebaseFirestore.instance.collection('promotions').doc(docs[index].id).update({'isActive': val});
-                        },
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.edit, color: Colors.blue),
-                        onPressed: () => _showManageDialog(context, id: docs[index].id, data: data),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.delete, color: Colors.red),
-                        onPressed: () => _deletePromotion(docs[index].id),
-                      ),
-                    ],
+                // ถ้าปิดใช้งาน การ์ดจะเป็นสีเทา
+                color: isActive ? Colors.white : Colors.grey[200],
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  // กดที่การ์ดเพื่อแก้ไข
+                  onTap: () {
+                    Navigator.push(
+                      context, 
+                      MaterialPageRoute(builder: (context) => AddPromotionScreen(id: doc.id, data: data))
+                    );
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: isActive ? Colors.orange[50] : Colors.grey[300],
+                                shape: BoxShape.circle
+                              ),
+                              child: Icon(Icons.local_offer, color: isActive ? Colors.orange : Colors.grey),
+                            ),
+                            const SizedBox(width: 15),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(name, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isActive ? Colors.black : Colors.grey)),
+                                  const SizedBox(height: 4),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: Colors.blue[50],
+                                      borderRadius: BorderRadius.circular(4),
+                                      border: Border.all(color: Colors.blue.withOpacity(0.3))
+                                    ),
+                                    child: Text("CODE: $code", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blue)),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(detailText, style: TextStyle(fontSize: 12, color: Colors.grey[700])),
+                                ],
+                              ),
+                            ),
+                            Column(
+                              children: [
+                                // สวิตช์เปิด/ปิด
+                                Transform.scale(
+                                  scale: 0.8,
+                                  child: Switch(
+                                    value: isActive,
+                                    activeColor: Colors.green,
+                                    onChanged: (val) => _toggleActive(doc.id, isActive),
+                                  ),
+                                ),
+                                // ปุ่มลบ
+                                IconButton(
+                                  icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
+                                  onPressed: () => _deletePromotion(doc.id, name),
+                                )
+                              ],
+                            )
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               );
@@ -247,9 +173,11 @@ if (type == 'flat_percent') {
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: const Color(0xFFA6C48A),
         foregroundColor: Colors.white,
-        onPressed: () => _showManageDialog(context),
+        onPressed: () {
+          Navigator.push(context, MaterialPageRoute(builder: (context) => const AddPromotionScreen()));
+        },
         icon: const Icon(Icons.add),
-        label: const Text("เพิ่มโปรโมชั่น"),
+        label: const Text("สร้างโปรโมชั่น"),
       ),
     );
   }

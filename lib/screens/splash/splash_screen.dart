@@ -75,7 +75,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                 child: const CircleAvatar(
                   radius: 80,
                   backgroundColor: Colors.transparent,
-                  backgroundImage: NetworkImage('https://img5.pic.in.th/file/secure-sv1/05871915-7cac-440c-9a52-17e6d9d71b4c.md.png'),
+                  backgroundImage: NetworkImage('https://img5.pic.in.th/file/secure-sv1/Black-and-White-Simple-Coffee-Shop-Logo4e21f60f252ab480.th.png'),
                 ),
               ),
             ),
