@@ -118,7 +118,7 @@ class _StockScreenState extends State<StockScreen> {
                       'category': finalCategory,
                       'currentStock': newStock,
                       'unit': unitCtrl.text.trim(),
-                      'minThreshold': 5,
+                      'minThreshold': 200,
                       'purchasePrice': pPrice,
                       'packSize': pSize,
                       'costPerUnit': costPerUnit,

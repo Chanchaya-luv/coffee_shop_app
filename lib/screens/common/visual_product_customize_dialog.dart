@@ -42,7 +42,6 @@ class _VisualProductCustomizeDialogState extends State<VisualProductCustomizeDia
 
     _availableMilks = widget.menu.availableMilks;
     if (_availableMilks.isEmpty) {
-         // --- 🔥 แก้ไข: เปลี่ยนชื่อให้สั้นลง (เอา +10 ออก) ---
          _availableMilks = ['นมวัว', 'นมโอ๊ต', 'นมถั่วเหลือง', 'ไม่ใส่นม'];
     }
 
@@ -87,10 +86,7 @@ class _VisualProductCustomizeDialogState extends State<VisualProductCustomizeDia
            if (realMilks.isNotEmpty) {
              setState(() {
                 _availableMilks = realMilks;
-                // กรองตัวที่ซ้ำ (เช่น ถ้ามีทั้ง นมโอ๊ต และ นมโอ๊ต (+10) ให้เอาอันยาวออก หรือเลือกแค่อันเดียว)
-                // แต่เพื่อความง่าย เราจะใช้ตาม DB เลย แต่ถ้าชื่อเปลี่ยน เราต้อง auto select ใหม่
                 if (!_availableMilks.contains(_milk)) {
-                    // พยายามหาตัวที่ใกล้เคียง
                     if (_availableMilks.contains('นมโอ๊ต')) _milk = 'นมโอ๊ต';
                     else _milk = _availableMilks.first;
                 }
@@ -143,7 +139,6 @@ class _VisualProductCustomizeDialogState extends State<VisualProductCustomizeDia
        if (widget.menu.category != 'ผลไม้') baseColor = Color.alphaBlend(Colors.white.withOpacity(0.4), baseColor);
     }
     
-    // --- 🔥 เช็คคำว่า 'โอ๊ต' แทนการเช็คชื่อเต็ม เพื่อรองรับทั้งมี/ไม่มี (+10) ---
     if (_milk.contains('โอ๊ต')) {
        baseColor = Color.alphaBlend(const Color(0xFFD7CCC8).withOpacity(0.5), baseColor);
     } else if (_milk.contains('ถั่วเหลือง')) {
@@ -212,16 +207,24 @@ class _VisualProductCustomizeDialogState extends State<VisualProductCustomizeDia
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // --- 🔥 แก้ไขการจัดวาง เลือกประเภท (Type) ให้ชิดซ้ายและเลื่อนได้เหมือนอันอื่น ---
                     const Text("เลือกประเภท (Type)", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
                     const SizedBox(height: 10),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        if (_availableTypes.contains('ร้อน')) _buildTypeChip("ร้อน", "ร้อน"),
-                        if (_availableTypes.contains('เย็น')) _buildTypeChip("เย็น", "เย็น"),
-                        if (_availableTypes.contains('ปั่น')) _buildTypeChip(widget.menu.category == 'ผลไม้' ? "ปั่น" : "ปั่น", "ปั่น"),
-                      ],
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.start, // ชิดซ้าย
+                        children: [
+                          if (_availableTypes.contains('ร้อน')) 
+                            Padding(padding: const EdgeInsets.only(right: 8.0), child: _buildTypeChip("ร้อน", "ร้อน")),
+                          if (_availableTypes.contains('เย็น')) 
+                            Padding(padding: const EdgeInsets.only(right: 8.0), child: _buildTypeChip("เย็น", "เย็น")),
+                          if (_availableTypes.contains('ปั่น')) 
+                            Padding(padding: const EdgeInsets.only(right: 8.0), child: _buildTypeChip(widget.menu.category == 'ผลไม้' ? "ปั่น" : "ปั่น", "ปั่น")),
+                        ],
+                      ),
                     ),
+                    
                     const SizedBox(height: 15),
 
                     const Text("ระดับความหวาน (Sweetness)", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
@@ -252,8 +255,6 @@ class _VisualProductCustomizeDialogState extends State<VisualProductCustomizeDia
                       scrollDirection: Axis.horizontal, 
                       child: Row(
                         children: _availableMilks.map((val) {
-                          // --- 🔥 กรองการแสดงผล: ถ้าเจอตัวที่มี +10 ให้แสดงชื่อเฉยๆ แต่เก็บค่าเดิมไว้ หรือถ้าแก้ที่ต้นทางแล้วก็แสดงเลย ---
-                          // แต่ในที่นี้เราแก้ source ให้เป็น 'นมโอ๊ต' แล้ว ดังนั้นแสดงได้เลย
                           return Padding(
                             padding: const EdgeInsets.only(right: 8.0), 
                             child: ChoiceChip(
@@ -282,6 +283,22 @@ class _VisualProductCustomizeDialogState extends State<VisualProductCustomizeDia
 
   Widget _buildTypeChip(String label, String value) {
     bool isSelected = _type == value;
-    return ChoiceChip(label: Text(label), selected: isSelected, selectedColor: value == 'ร้อน' ? Colors.red[100] : (value == 'เย็น' ? Colors.blue[100] : Colors.purple[100]), labelStyle: TextStyle(color: isSelected ? Colors.black : Colors.grey[700], fontWeight: isSelected ? FontWeight.bold : FontWeight.normal), onSelected: (selected) { if (selected) _selectType(value); });
+    
+    bool isFruit = widget.menu.category == 'ผลไม้';
+    bool isDisabled = isFruit && value != 'ปั่น';
+
+    return ChoiceChip(
+      label: Text(label),
+      selected: isSelected,
+      selectedColor: value == 'ร้อน' ? Colors.red[100] : (value == 'เย็น' ? Colors.blue[100] : Colors.purple[100]),
+      disabledColor: Colors.grey[200], 
+      labelStyle: TextStyle(
+        color: isDisabled ? Colors.grey : (isSelected ? Colors.black : Colors.grey[700]), 
+        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal
+      ),
+      onSelected: isDisabled ? null : (selected) {
+        if (selected) _selectType(value);
+      },
+    );
   }
 }
