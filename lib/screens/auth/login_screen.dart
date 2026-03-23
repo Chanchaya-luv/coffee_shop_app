@@ -91,7 +91,7 @@ class _LoginScreenState extends State<LoginScreen> {
               const CircleAvatar(
                 radius: 60, 
                 backgroundColor: Colors.transparent, 
-                backgroundImage: NetworkImage('https://img5.pic.in.th/file/secure-sv1/Black-and-White-Simple-Coffee-Shop-Logo4e21f60f252ab480.th.png'),
+                backgroundImage: NetworkImage('https://img2.pic.in.th/Black-and-White-Simple-Coffee-Shop-Logo7b69908f0e9252a7.png'),
               ),
               
               const SizedBox(height: 20),
