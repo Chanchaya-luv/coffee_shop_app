@@ -20,7 +20,8 @@ As a QA-focused developer, I prioritized software quality and user experience th
 * **Language:** Dart
 * **Database:** Firebase Firestore
 * **Design & Analysis:** Figma, FigJam, Power BI
-<img width="1668" height="2420" alt="Simulator Screenshot - iPad Pro 11-inch (M4) - 2026-04-14 at 12 18 04" src="https://github.com/user-attachments/assets/219d67ad-2d7c-4edb-b58f-fc666ad7f9e7" />
+<img width="1920" height="1080" alt="overview_app_cus" src="https://github.com/user-attachments/assets/1f8d12ff-b9e7-4310-a87e-9aef454cd84d" />
+<img width="1920" height="1080" alt="overview_app_ad" src="https://github.com/user-attachments/assets/b26d46d7-cc42-41e9-b14e-e24c39a1387f" />
 <img width="1169" height="827" alt="context_diagram" src="https://github.com/user-attachments/assets/676c1d12-8acf-4d7e-9770-a1f491d39565" />
 <img width="1654" height="1169" alt="DFD_Level_1" src="https://github.com/user-attachments/assets/e2283740-523c-4a12-9366-9f262499cbf2" />
 <img width="1654" height="1169" alt="DFD_Level_2" src="https://github.com/user-attachments/assets/cd66d1c8-179c-4191-81f9-302db73beb73" />
